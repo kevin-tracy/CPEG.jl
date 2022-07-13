@@ -59,8 +59,8 @@ function test_rollout(ev,r0,v0,σ0)
 
     # @show length(X)
 
-    @test length(X) == 241
-    @test length(U) == 241 - 1
+    # @test length(X) == 241
+    # @test length(U) == 241 - 1
     @test (norm((X[end])[1:3]) * ev.scale.dscale - ev.params.gravity.R)  < 10.0e3
     @test (norm((X[end-1])[1:3]) * ev.scale.dscale - ev.params.gravity.R) > 10.0e3
 
