@@ -73,7 +73,7 @@ function rollout(ev::CPEGWorkspace,x0::SVector{7,T},U::Vector{SVector{1,T}}) whe
         # for debugging purposes
         # @show (norm(X[i+1][1:3])*ev.scale.dscale - ev.params.gravity.R)/1e3
 
-        if (norm(X[i+1][1:3])*ev.scale.dscale - ev.params.gravity.R) < 10e3
+        if (norm(X[i+1][1:3])*ev.scale.dscale - ev.params.gravity.Rp_e) < 10e3
             # @info "hit alt"
             # @show i
             end_idx = i+1
