@@ -17,7 +17,6 @@ include("gravity.jl")
 include("aero_forces.jl")
 include("vehicle.jl")
 include("dynamics.jl")
-include("dynamics.jl")
 include("post_process.jl")
 
 end # module

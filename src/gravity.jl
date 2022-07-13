@@ -25,3 +25,9 @@ end
                            y*(1 - Re_r_sqr*(five_z_sqr - 1)),
                            z*(1 - Re_r_sqr*(five_z_sqr - 3))]
 end
+
+function altitude(g::GravityParameters, r::SVector{3, T}) where T
+      h = norm(r) - g.R
+      print(h, '\n')
+      return h
+end
