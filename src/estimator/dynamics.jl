@@ -22,7 +22,7 @@ function esdynamics(ev::CPEGWorkspace, x::SVector{8,T}, u::SVector{1,W}) where {
     h = altitude(ev.params.gravity, r)
 
     # density
-    ρ = esdensity(ev.params.density, h, 7.295)*kρ
+    ρ = esdensity(ev.params.density, r, 7.295)*kρ
 
     # lift and drag magnitudes
     L, D = LD_mags(ev.params.aero,ρ,r,v)
