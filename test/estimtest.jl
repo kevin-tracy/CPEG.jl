@@ -37,7 +37,6 @@ U = [@SVector zeros(1) for i = 1:N]
 # print(U)
 X[1] = deepcopy(x0)
 μ = deepcopy(X)
-# μ[1][8] = μ[1][8] + 0.1*randn()
 μ[1] = [μ[1][1:7]; μ[1][8] + 0.1*randn()]
 F = [zeros(8,8) for i = 1:N]
 Σ = (0.001*Matrix(float(I(8))))
@@ -50,10 +49,9 @@ R = diagm( [(.1)^2*ones(3)/ev.scale.dscale; (0.0002)^2*ones(3)/(ev.scale.dscale/
 kf_sys = (dt = dt, ΓR = CPEG.chol(R), ΓQ = CPEG.chol(Q))
 
 end_idx = NaN
-for i = 1:1#(N-1)
+for i = 1:(N-1)
     U[i] = [sin(i/10)/30]
     X[i+1] = CPEG.rk4_est(model,X[i],U[i],dt)
-    Y[i+1] = measurement(model,X[i+1]) + kf_sys.ΓR*randn(7)
-
-    μ[i+1], F[i+1] = sqrkalman_filter(model, μ[i],F[i],U[i],Y[i+1],kf_sys)
+    Y[i+1] = CPEG.measurement(model,X[i+1]) + kf_sys.ΓR*randn(7)
+    μ[i+1], F[i+1] = CPEG.sqrkalman_filter(model, μ[i],F[i],U[i],Y[i+1],kf_sys)
 end
