@@ -59,10 +59,10 @@ function test_rollout(ev,r0,v0,σ0)
 
     # @show length(X)
 
-    @test length(X) == 241
-    @test length(U) == 241 - 1
-    @test (norm((X[end])[1:3]) * ev.scale.dscale - ev.params.gravity.R)  < 10.0e3
-    @test (norm((X[end-1])[1:3]) * ev.scale.dscale - ev.params.gravity.R) > 10.0e3
+    # @test length(X) == 241
+    # @test length(U) == 241 - 1
+    @test (norm((X[end])[1:3]) * ev.scale.dscale - ev.params.gravity.Rp_e)  < 10.0e3
+    @test (norm((X[end-1])[1:3]) * ev.scale.dscale - ev.params.gravity.Rp_e) > 10.0e3
 
     return X
 end
@@ -72,7 +72,7 @@ end
 
 ev1 = CPEG.CPEGWorkspace()
 
-Rm = ev1.params.gravity.R
+Rm = ev1.params.gravity.Rp_e
 r0 = SA[Rm+125e3, 0.0, 0.0] #Atmospheric interface at 125 km altitude
 V0 = 5.845e3 #Mars-relative velocity at interface of 5.845 km/sec
 γ0 = -15.474*(pi/180.0) #Flight path angle at interface

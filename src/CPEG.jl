@@ -10,6 +10,7 @@ using SparseArrays
 using SuiteSparse
 using Printf
 
+
 include("qp_solver.jl")
 include("atmosphere.jl")
 include("scaling.jl")
@@ -18,5 +19,7 @@ include("aero_forces.jl")
 include("vehicle.jl")
 include("dynamics.jl")
 include("post_process.jl")
-
+include("estimator/srekf.jl")
+include("estimator/dynamics.jl")
+# include("estimator/srekf.jl")
 end # module

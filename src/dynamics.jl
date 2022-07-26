@@ -10,7 +10,7 @@ function dynamics(ev::CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}) where {T,
     r, v = unscale_rv(ev.scale,r_scaled,v_scaled)
 
     # altitude
-    h = norm(r) - ev.params.gravity.R
+    h = altitude(ev.params.gravity, r)
 
     # density
     ρ = density(ev.params.density, h)
@@ -73,7 +73,7 @@ function rollout(ev::CPEGWorkspace,x0::SVector{7,T},U::Vector{SVector{1,T}}) whe
         # for debugging purposes
         # @show (norm(X[i+1][1:3])*ev.scale.dscale - ev.params.gravity.R)/1e3
 
-        if (norm(X[i+1][1:3])*ev.scale.dscale - ev.params.gravity.R) < 10e3
+        if (norm(X[i+1][1:3])*ev.scale.dscale - ev.params.gravity.Rp_e) < 10e3
             # @info "hit alt"
             # @show i
             end_idx = i+1
