@@ -21,5 +21,6 @@ include("dynamics.jl")
 include("post_process.jl")
 include("estimator/srekf.jl")
 include("estimator/dynamics.jl")
+include("estimator/postprocess.jl")
 # include("estimator/srekf.jl")
 end # module

@@ -4,7 +4,7 @@ using LinearAlgebra
 #     ΓQ::UpperTriangular{Float64, Matrix{Float64}}
 #     ΓR::UpperTriangular{Float64, Matrix{Float64}}
 # end
-function measurement(model,x)
+@inline function measurement(model,x)
     return copy(x[1:7])
 end
 @inline function chol(A)
@@ -34,11 +34,11 @@ function sqrkf_predict(model, μ,F₋,u,kf_sys)
     ΓQ = kf_sys.ΓQ
     dt = kf_sys.dt
 
-    A = ForwardDiff.jacobian(_x -> rk4(model,_x,u,dt),μ)
+    A = ForwardDiff.jacobian(_x -> CPEG.rk4_est(model,_x,u,dt),μ)
 
     # predict one step
     # μ̄ = A*μ + B*u
-    μ̄ = rk4(model,μ,u,dt)
+    μ̄ = CPEG.rk4_est(model,μ,u,dt)
     F̄ = qrᵣ([F₋*A';ΓQ])
 
     return μ̄, F̄
