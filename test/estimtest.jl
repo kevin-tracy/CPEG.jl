@@ -26,7 +26,7 @@ x0 = [r0/ev.scale.dscale;v0/(ev.scale.dscale/ev.scale.tscale); σ0;kρ]
 
 # first rollout
 dt = 0.2/3600/ev.scale.tscale
-N = 500
+N = 2000
 t_vec = (0:dt:((N-1)*dt))*3600
 # X = NaN*[zeros(8) for i = 1:N]
 # U_in = [zeros(1) for i = 1:N-1]
@@ -145,13 +145,13 @@ end
 mat"
 figure
 hold on
-p1 = plot($t_vec,$μm(8,:)','b')
-p2= plot($t_vec,$μm(8,:)' + 3*$σm,'r--')
-plot($t_vec,$μm(8,:)' - 3*$σm,'r--')
-p3 = plot($t_vec,$Xm(8,:)','color',[0.9290, 0.6940, 0.1250])
+p1 = plot($alt_k/1e3,$μm(8,:)','b')
+p2= plot($alt_k/1e3,$μm(8,:)' + 3*$σm,'r--')
+plot($alt_k/1e3,$μm(8,:)' - 3*$σm,'r--')
+p3 = plot($alt/1e3,$Xm(8,:)','color',[0.9290, 0.6940, 0.1250])
 title('Atmospheric Correction Factor')
 legend([p1;p2;p3],'SREKF krho','3 sigma bounds','True krho','location','southeast')
-xlabel('Time (s)')
+xlabel('Altitude, km')
 ylabel('k rho')
 ylim([1.7 1.77])
 hold off
