@@ -1,9 +1,10 @@
 function esdensity(model,x,H)
     r = norm(x[1:3])
-    r0 =3396.2
+    r0 =3396.2*1e3
     ρ0 = 5.25*1e7
     # H =11.1
     # ρ0 *= 1e7
+    # println(r)
     ρ = ρ0*exp(-(r-r0)/H)
     return ρ
 end
@@ -22,7 +23,7 @@ function esdynamics(ev::CPEGWorkspace, x::SVector{8,T}, u::SVector{1,W}) where {
     h = altitude(ev.params.gravity, r)
 
     # density
-    ρ = esdensity(ev.params.density, r, 7.295)*kρ
+    ρ = esdensity(ev.params.density, r, 7.295*1e3)*(1+kρ)
 
     # lift and drag magnitudes
     L, D = LD_mags(ev.params.aero,ρ,r,v)

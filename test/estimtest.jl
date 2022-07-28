@@ -36,9 +36,9 @@ U = [@SVector zeros(1) for i = 1:N]
 
 X[1] = deepcopy(x0)
 μ = deepcopy(X)
-μ[1] = [μ[1][1:7]; μ[1][8] + 0.1*randn()]
+μ[1] = [μ[1][1:7]; μ[1][8] + 0.5*randn()]
 F = [zeros(8,8) for i = 1:N]
-Σ = (0.001*Matrix(float(I(8))))
+Σ = (0.01*Matrix(float(I(8))))
 Σ[8,8] = (1)^2
 F[1] = CPEG.chol(Matrix(Σ))
 σ = deepcopy(F)
@@ -47,10 +47,10 @@ F[1] = CPEG.chol(Matrix(Σ))
 
 
 
-# Q = diagm( [(.000005)^2*ones(3)/ev.scale.dscale; .000005^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-10)^2;(1e-10)^2])
-# R = diagm( [(.1)^2*ones(3)/ev.scale.dscale; (0.0002)^2*ones(3)/(ev.scale.dscale/ev.scale.tscale);1e-10])
-Q = diagm( [(.005)^2*ones(3)/ev.scale.dscale; .005^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-3)^2;(1e-3)^2])
+Q = diagm( [(.000005)^2*ones(3)/ev.scale.dscale; .000005^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-10)^2;(1e-10)^2])
 R = diagm( [(.1)^2*ones(3)/ev.scale.dscale; (0.0002)^2*ones(3)/(ev.scale.dscale/ev.scale.tscale);1e-10])
+#Q = diagm( [(.005)^2*ones(3)/ev.scale.dscale; .005^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-3)^2;(1e-3)^2])
+#R = diagm( [(.1)^2*ones(3)/ev.scale.dscale; (0.0002)^2*ones(3)/(ev.scale.dscale/ev.scale.tscale);1e-10])
 
 kf_sys = (dt = dt, ΓR = CPEG.chol(R), ΓQ = CPEG.chol(Q))
 
@@ -84,7 +84,7 @@ Y = Y[1:idx_trn]
 F = F[1:idx_trn]
 σm = σm[1:idx_trn]
 N = idx_trn
-print(μ[8])
+# print(μ[8])
 # print(X)
 function mat_from_vec(a)
     "Turn a vector of vectors into a matrix"
@@ -146,6 +146,7 @@ set(gca,'FontSize',14)
 saveas(gcf,'plots/verr.eps','epsc')
 "
 μm = mat_from_vec(μ)
+print(μm[8,:])
 # σm = zeros(length(μ))
 # # @infiltrate
 # # error()
