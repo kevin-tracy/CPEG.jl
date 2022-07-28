@@ -17,25 +17,23 @@ V0 = 5.845e3 #Mars-relative velocity at interface of 5.845 km/sec
 v0 = V0*SA[sin(γ0), cos(γ0), 0.0]
 σ0 = deg2rad(42)
 kρ = 1.74
+idx_trn = 1
 
-ev.scale.dscale = 1.0e3
-ev.scale.tscale = 1.0
-ev.scale.uscale = 1.0
+# ev.scale.dscale = 1.0e3
+# ev.scale.tscale = 1.0
+# ev.scale.uscale = 1.0
 
 x0 = [r0/ev.scale.dscale;v0/(ev.scale.dscale/ev.scale.tscale); σ0;kρ]
 
 # first rollout
-dt = 0.2/3600/ev.scale.tscale
+dt = 0.2/3600/1
 N = 2000
 t_vec = (0:dt:((N-1)*dt))*3600
-# X = NaN*[zeros(8) for i = 1:N]
-# U_in = [zeros(1) for i = 1:N-1]
 Y = [zeros(7) for i = 1:N]
 
 X = [@SVector zeros(length(x0)) for i = 1:N]
 U = [@SVector zeros(1) for i = 1:N]
 
-# print(U)
 X[1] = deepcopy(x0)
 μ = deepcopy(X)
 μ[1] = [μ[1][1:7]; μ[1][8] + 0.1*randn()]
@@ -55,9 +53,26 @@ for i = 1:(N-1)
     X[i+1] = CPEG.rk4_est(model,X[i],U[i],dt)
     Y[i+1] = CPEG.measurement(model,X[i+1]) + kf_sys.ΓR*randn(7)
     μ[i+1], F[i+1] = CPEG.sqrkalman_filter(model, μ[i],F[i],U[i],Y[i+1],kf_sys)
+
+    x = X[i+1]
+    r = CPEG.unscale_rv(ev.scale,x[SA[1,2,3]],x[SA[4,5,6]])[1]
+    alt = CPEG.altitude(ev.params.gravity, r)
+    global idx_trn
+    idx_trn += 1
+    if alt < 1e4
+        #break if altitude less than 10 km
+        break
+    end
 end
 
-
+# truncate results
+t_vec = (0:dt:((idx_trn-1)*dt))*3600
+X  = X[1:idx_trn]
+U = U[1:idx_trn]
+Y = Y[1:idx_trn]
+μ = μ[1:idx_trn]
+F = F[1:idx_trn]
+N = idx_trn
 # print(X)
 function mat_from_vec(a)
     "Turn a vector of vectors into a matrix"
@@ -89,25 +104,9 @@ verr = 1e3*([(ev.scale.dscale/ev.scale.tscale)*norm(X[i][4:6] - μ[i][4:6]) for 
 
 yperr = 1e3*([ev.scale.dscale*norm(X[i][1:3] - Y[i][1:3]) for i = 2:N])
 yverr = 1e3*([(ev.scale.dscale/ev.scale.tscale)*norm(X[i][4:6] - Y[i][4:6]) for i = 2:N])
-# @infiltrate
-# error()
-# mat"
-# figure
-# hold on
-# plot($alt)
-# plot($alt_k)
-# hold off
-# "
-#
-# mat"
-# figure
-# hold on
-# plot($dr,$cr)
-# plot($dr_k,$cr_k)
-# xlabel('downrange')
-# ylabel('crossrange')
-# hold off
-# "
+
+print(perr)
+
 mat"
 figure
 hold on

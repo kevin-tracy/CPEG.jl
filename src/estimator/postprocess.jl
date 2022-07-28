@@ -50,7 +50,7 @@ end
 function altitude(ev,x)
     # alt = [norm(X[i][1:3])*1e3-model.evmodel.planet.R for i = 1:length(X)]
 
-    return norm(x[1:3])*1e3 - ev.params.gravity.Rp_e
+    return norm(x[1:3])*ev.scale.dscale - ev.params.gravity.Rp_e
 end
 function anglebetween(r1,r2)
     dp = dot(normalize(r1),normalize(r2))
