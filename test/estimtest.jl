@@ -16,7 +16,7 @@ V0 = 5.845e3 #Mars-relative velocity at interface of 5.845 km/sec
 γ0 = -15.474*(pi/180.0) #Flight path angle at interface
 v0 = V0*SA[sin(γ0), cos(γ0), 0.0]
 σ0 = deg2rad(42)
-kρ = 1.74
+kρ = 0.74
 idx_trn = 1
 
 # ev.scale.dscale = 1.0e3
@@ -41,8 +41,15 @@ F = [zeros(8,8) for i = 1:N]
 Σ = (0.001*Matrix(float(I(8))))
 Σ[8,8] = (1)^2
 F[1] = CPEG.chol(Matrix(Σ))
+σ = deepcopy(F)
+σm = zeros(N)
+σm[1] = 1
 
-Q = diagm( [(.000005)^2*ones(3)/ev.scale.dscale; .000005^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-10)^2;(1e-10)^2])
+
+
+# Q = diagm( [(.000005)^2*ones(3)/ev.scale.dscale; .000005^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-10)^2;(1e-10)^2])
+# R = diagm( [(.1)^2*ones(3)/ev.scale.dscale; (0.0002)^2*ones(3)/(ev.scale.dscale/ev.scale.tscale);1e-10])
+Q = diagm( [(.005)^2*ones(3)/ev.scale.dscale; .005^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-3)^2;(1e-3)^2])
 R = diagm( [(.1)^2*ones(3)/ev.scale.dscale; (0.0002)^2*ones(3)/(ev.scale.dscale/ev.scale.tscale);1e-10])
 
 kf_sys = (dt = dt, ΓR = CPEG.chol(R), ΓQ = CPEG.chol(Q))
@@ -53,14 +60,17 @@ for i = 1:(N-1)
     X[i+1] = CPEG.rk4_est(model,X[i],U[i],dt)
     Y[i+1] = CPEG.measurement(model,X[i+1]) + kf_sys.ΓR*randn(7)
     μ[i+1], F[i+1] = CPEG.sqrkalman_filter(model, μ[i],F[i],U[i],Y[i+1],kf_sys)
+    σ[i+1] = F[i+1]'*F[i+1]
+    σm[i+1] = sqrt(σ[i+1][8,8])
 
+    #break if altitude less than 10 km
     x = X[i+1]
     r = CPEG.unscale_rv(ev.scale,x[SA[1,2,3]],x[SA[4,5,6]])[1]
     alt = CPEG.altitude(ev.params.gravity, r)
+    # println(alt, i)
     global idx_trn
     idx_trn += 1
     if alt < 1e4
-        #break if altitude less than 10 km
         break
     end
 end
@@ -72,7 +82,9 @@ U = U[1:idx_trn]
 Y = Y[1:idx_trn]
 μ = μ[1:idx_trn]
 F = F[1:idx_trn]
+σm = σm[1:idx_trn]
 N = idx_trn
+print(μ[8])
 # print(X)
 function mat_from_vec(a)
     "Turn a vector of vectors into a matrix"
@@ -105,7 +117,7 @@ verr = 1e3*([(ev.scale.dscale/ev.scale.tscale)*norm(X[i][4:6] - μ[i][4:6]) for 
 yperr = 1e3*([ev.scale.dscale*norm(X[i][1:3] - Y[i][1:3]) for i = 2:N])
 yverr = 1e3*([(ev.scale.dscale/ev.scale.tscale)*norm(X[i][4:6] - Y[i][4:6]) for i = 2:N])
 
-print(perr)
+# print(perr)
 
 mat"
 figure
@@ -134,13 +146,14 @@ set(gca,'FontSize',14)
 saveas(gcf,'plots/verr.eps','epsc')
 "
 μm = mat_from_vec(μ)
-σm = zeros(length(μ))
-# @infiltrate
-# error()
-for i = 1:length(μ)
-    Σ = F[i]'*F[i]
-    σm = sqrt(Σ[8,8])
-end
+# σm = zeros(length(μ))
+# # @infiltrate
+# # error()
+# for i = 1:length(μ)
+#     Σ = F[i]'*F[i]
+#     σm = sqrt(Σ[8,8])
+# end
+# print(3*σm)
 mat"
 figure
 hold on
@@ -152,9 +165,26 @@ title('Atmospheric Correction Factor')
 legend([p1;p2;p3],'SREKF krho','3 sigma bounds','True krho','location','southeast')
 xlabel('Altitude, km')
 ylabel('k rho')
-ylim([1.7 1.77])
+# ylim([1.7 1.77])
 hold off
 set(gca,'FontSize',14)
 saveas(gcf,'plots/krho.eps','epsc')
+"
+
+mat"
+figure
+hold on
+p1 = plot($t_vec,$μm(8,:)','b')
+p2= plot($t_vec,$μm(8,:)' + 3*$σm,'r--')
+plot($t_vec,$μm(8,:)' - 3*$σm,'r--')
+p3 = plot($t_vec,$Xm(8,:)','color',[0.9290, 0.6940, 0.1250])
+title('Atmospheric Correction Factor')
+legend([p1;p2;p3],'SREKF krho','3 sigma bounds','True krho','location','southeast')
+xlabel('Time, s')
+ylabel('k rho')
+# ylim([1.7 1.77])
+hold off
+set(gca,'FontSize',14)
+saveas(gcf,'plots/krhotime.eps','epsc')
 "
 # @test a1 ≈ (a1_central + a1_j2) rtol = 1e-12
