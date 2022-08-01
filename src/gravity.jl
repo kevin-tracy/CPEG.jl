@@ -67,7 +67,7 @@ function altitude(g::GravityParameters, rp::SVector{3, T}) where T
     # h = norm(r) - g.Rp_e
     # print("h2 - ", h2, '\n')
     # print("h1 - ", h, '\n')
-    return h
+    return [h, lat, lon]
 end
 
 

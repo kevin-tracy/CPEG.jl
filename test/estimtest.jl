@@ -19,16 +19,16 @@ v0 = V0*SA[sin(γ0), cos(γ0), 0.0]
 kρ = 0.74
 idx_trn = 1
 
-# ev.scale.dscale = 1.0e3
+# ev.scale.dscale = 1.0
 # ev.scale.tscale = 1.0
 # ev.scale.uscale = 1.0
-
 x0 = [r0/ev.scale.dscale;v0/(ev.scale.dscale/ev.scale.tscale); σ0;kρ]
 
 # first rollout
-dt = 0.2/3600/1
-N = 2000
-t_vec = (0:dt:((N-1)*dt))*3600
+dt = 0.1/ev.scale.tscale# 1/3600/ev.scale.tscale
+N = 4000
+t_vec = (0:dt:((N-1)*dt))#*3600
+print(t_vec)
 Y = [zeros(7) for i = 1:N]
 
 X = [@SVector zeros(length(x0)) for i = 1:N]
@@ -54,29 +54,35 @@ R = diagm( 10*[(.1)^2*ones(3)/ev.scale.dscale; (0.0002)^2*ones(3)/(ev.scale.dsca
 
 kf_sys = (dt = dt, ΓR = CPEG.chol(R), ΓQ = CPEG.chol(Q))
 
+
 end_idx = NaN
 for i = 1:(N-1)
-    U[i] = [sin(i/10)/30]
+    U[i] = [cos(i/10)/30]
+    # U[i] = [pi/2]
     X[i+1] = CPEG.rk4_est(model,X[i],U[i],dt)
     Y[i+1] = CPEG.measurement(model,X[i+1]) + kf_sys.ΓR*randn(7)
     μ[i+1], F[i+1] = CPEG.sqrkalman_filter(model, μ[i],F[i],U[i],Y[i+1],kf_sys)
     σ[i+1] = F[i+1]'*F[i+1]
     σm[i+1] = sqrt(σ[i+1][8,8])
-
     #break if altitude less than 10 km
-    x = X[i+1]
+    x = deepcopy(X[i+1])
     r = CPEG.unscale_rv(ev.scale,x[SA[1,2,3]],x[SA[4,5,6]])[1]
-    alt = CPEG.altitude(ev.params.gravity, r)
+    # alt = CPEG.altitude(ev.params.gravity, r)[1]
+    alt,lat,lon = CPEG.altitude(ev.params.gravity, r)
+    if i%5== 1
+        println("alt ",alt," - lat ",lat," - lon ",lon)
+    end
     # println(alt, i)
     global idx_trn
     idx_trn += 1
     if alt < 1e4
+        println("alt ",alt," - lat ",lat," - lon ",lon)
         break
     end
 end
-
+# exit()
 # truncate results
-t_vec = (0:dt:((idx_trn-1)*dt))*3600
+t_vec = (0:dt:((idx_trn-1)*dt))*ev.scale.tscale#*3600
 X  = X[1:idx_trn]
 U = U[1:idx_trn]
 Y = Y[1:idx_trn]
@@ -84,8 +90,7 @@ Y = Y[1:idx_trn]
 F = F[1:idx_trn]
 σm = σm[1:idx_trn]
 N = idx_trn
-# print(μ[8])
-# print(X)
+
 function mat_from_vec(a)
     "Turn a vector of vectors into a matrix"
     rows = length(a[1])
@@ -107,6 +112,8 @@ hold on
 plot($Xm(7,:))
 hold off
 "
+
+
 alt, dr, cr = CPEG.postprocess_es(model,X,x0)
 
 alt_k, dr_k, cr_k = CPEG.postprocess_es(model,μ,x0)
@@ -117,7 +124,20 @@ verr = 1e3*([(ev.scale.dscale/ev.scale.tscale)*norm(X[i][4:6] - μ[i][4:6]) for 
 yperr = 1e3*([ev.scale.dscale*norm(X[i][1:3] - Y[i][1:3]) for i = 2:N])
 yverr = 1e3*([(ev.scale.dscale/ev.scale.tscale)*norm(X[i][4:6] - Y[i][4:6]) for i = 2:N])
 
-# print(perr)
+mat"
+figure
+hold on
+title('Trajectory')
+%plot($t_vec, $Xm(1,:))
+%plot($t_vec, $Xm(2,:))
+plot($t_vec, $alt)
+legend('X','Y','Z')
+xlabel('Time, s')
+ylabel('Position, km')
+hold off
+set(gca,'FontSize',14)
+saveas(gcf,'plots/traj.eps','epsc')
+"
 
 mat"
 figure
@@ -146,7 +166,7 @@ set(gca,'FontSize',14)
 saveas(gcf,'plots/verr.eps','epsc')
 "
 μm = mat_from_vec(μ)
-print(μm[8,:])
+# print(μm[8,:])
 # σm = zeros(length(μ))
 # # @infiltrate
 # # error()
