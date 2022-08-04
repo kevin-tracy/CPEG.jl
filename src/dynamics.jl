@@ -42,7 +42,7 @@ function rk4(
     ev::CPEGWorkspace,
     x_n::SVector{7,T},
     u::SVector{1,W},
-    dt_s::Float64) where {T,W}
+    dt_s::T2) where {T,W,T2}
 
     k1 = dt_s*dynamics(ev,x_n,u)
     k2 = dt_s*dynamics(ev,x_n+k1/2,u)

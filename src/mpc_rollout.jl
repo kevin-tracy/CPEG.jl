@@ -1,21 +1,21 @@
-# cd("/Users/kevintracy/.julia/dev/CPEG")
-# Pkg.activate(".")
-# cd("/Users/kevintracy/.julia/dev/CPEG/src")
-# using LinearAlgebra
-# using StaticArrays
-# using ForwardDiff
-# using SparseArrays
-# using SuiteSparse
-# using Printf
-#
-# include("qp_solver.jl")
-# include("atmosphere.jl")
-# include("scaling.jl")
-# include("gravity.jl")
-# include("aero_forces.jl")
-# include("vehicle.jl")
-# include("dynamics.jl")
-# include("post_process.jl")
+cd("/Users/kevintracy/.julia/dev/CPEG")
+Pkg.activate(".")
+cd("/Users/kevintracy/.julia/dev/CPEG/src")
+using LinearAlgebra
+using StaticArrays
+using ForwardDiff
+using SparseArrays
+using SuiteSparse
+using Printf
+
+include("qp_solver.jl")
+include("atmosphere.jl")
+include("scaling.jl")
+include("gravity.jl")
+include("aero_forces.jl")
+include("vehicle.jl")
+include("dynamics.jl")
+include("post_process.jl")
 
 using LinearAlgebra
 using StaticArrays
@@ -158,7 +158,7 @@ function main_cpeg(ev, r, v, σ)
         # check termination criteria
         if (abs(new_md - old_md) < ev.miss_distance_tol) | (ndu < ev.ndu_tol) #| flipping
             update_σ!(ev,X)
-            return nothing
+            return X
         end
 
         # linearize and solve QP
@@ -184,7 +184,7 @@ function tt()
 
         ev = CPEGWorkspace()
 
-        Rm = ev.params.gravity.R
+        Rm = ev.params.gravity.Rp_e
         r0 = SA[Rm+125e3, 0.0, 0.0] #Atmospheric interface at 125 km altitude
         V0 = 5.845e3 #Mars-relative velocity at interface of 5.845 km/sec
         γ0 = -15.474*(pi/180.0) #Flight path angle at interface
@@ -218,7 +218,7 @@ function tt()
         ev.verbose = true
         ev.ndu_tol = 1e-3
         ev.max_cpeg_iter = 30
-        ev.miss_distance_tol = 1e1  # m
+        ev.miss_distance_tol = 1e3  # m
 
         ev.scale.uscale = 1e1
 
@@ -232,15 +232,17 @@ function tt()
         # @show r0
         # @show v0
         # @show σ0
-        for i = 1:N-1
+        for i = 1:10
 
             # call cpeg
             # @show X[i]
             # @show ev.U
             ev.U = [ev.U[i+1] for i = 1:length(ev.U)-1]
             # ev.U = [SA[0] for i = 1:length(ev.U)]
-            main_cpeg(ev, unscale_state(ev,X[i])...)
+            X = main_cpeg(ev, unscale_state(ev,X[i])...)
             U[i] = ev.U[1]
+            jldsave("example_traj.jld2", X = X , U=copy(ev.U))
+            error()
 
             dr = 0*(1000/ev.scale.dscale) * @SVector randn(3)
             # X[i]
