@@ -305,7 +305,7 @@ function iLQR(params,X,U,P,p,K,d,Xn,Un;atol=1e-5,max_iters = 25,verbose = true,Ï
             convio = max(convio, norm(hxv,Inf))
 
             @show convio
-            if convio <1e-4
+            if convio <1e-6
                 @info "success!"
                 return nothing
             end
