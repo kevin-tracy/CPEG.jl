@@ -247,7 +247,7 @@ let
     constrain = false
 
 
-    for cpeg_iter = 1:10
+    for cpeg_iter = 1:20
 
         # rollout
         for i = 1:N-1
@@ -258,7 +258,7 @@ let
         A,B = jacobs(params,X,U)
 
         # solve MPC
-        δu = mpc_quad1(params, A,B,X,U; verbose = false, constrain = constrain)
+        δu = mpc_quad1(params, A,B,X,U; verbose = false, atol = 1e-10, constrain = constrain)
         md = norm(X[N][1:3] - xg[1:3])*ev.scale.dscale/1000
         if md < 5
             @info "constrained"

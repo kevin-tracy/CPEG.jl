@@ -43,7 +43,7 @@ function stage_cost(p::NamedTuple,x,u,k)
     return 0.5*dx'*p.Q*dx + 0.5*du'*p.R*du
 end
 function term_cost(p::NamedTuple,x)
-    dx = x - p.Xref[p.N]
+    dx = x - p.Xref[end]
     return 0.5*dx'*p.Qf*dx
 end
 function stage_cost_expansion(p::NamedTuple,x,u,k)
@@ -52,12 +52,12 @@ function stage_cost_expansion(p::NamedTuple,x,u,k)
     return p.Q, p.Q*dx, p.R, p.R*du
 end
 function term_cost_expansion(p::NamedTuple,x)
-    dx = x - p.Xref[p.N]
+    dx = x - p.Xref[end]
     return p.Qf, p.Qf*dx
 end
 function backward_pass!(params,X,U,P,p,d,K,reg,μ,μx,ρ,λ)
 
-    N = params.N
+    N = length(X)
     ΔJ = 0.0
 
     # terminal cost expansion
@@ -140,7 +140,7 @@ function backward_pass!(params,X,U,P,p,d,K,reg,μ,μx,ρ,λ)
     return ΔJ
 end
 function trajectory_AL_cost(params,X,U,μ,μx,ρ,λ)
-    N = params.N
+    N = length(X)
     J = 0.0
     for k = 1:N-1
         J += stage_cost(params,X[k],U[k],k)
@@ -155,9 +155,9 @@ function trajectory_AL_cost(params,X,U,μ,μx,ρ,λ)
         J += dot(μx[k],hxv) + 0.5*ρ*hxv'*mask*hxv
     end
     J += term_cost(params,X[N])
-    hxv = ineq_con_x(params,X[params.N])
-    mask = eval_mask(μx[params.N],hxv)
-    J += dot(μx[params.N],hxv) + 0.5*ρ*hxv'*mask*hxv
+    hxv = ineq_con_x(params,X[length(X)])
+    mask = eval_mask(μx[length(X)],hxv)
+    J += dot(μx[length(X)],hxv) + 0.5*ρ*hxv'*mask*hxv
 
     # goal constraint
     hxv = X[N][1:3] - params.Xref[N][1:3]
@@ -166,7 +166,7 @@ function trajectory_AL_cost(params,X,U,μ,μx,ρ,λ)
 end
 function forward_pass!(params,X,U,K,d,ΔJ,Xn,Un,μ,μx,ρ,λ; max_linesearch_iters = 20)
 
-    N = params.N
+    N = length(X)
     α = 1.0
 
     J = trajectory_AL_cost(params,X,U,μ,μx,ρ,λ)
@@ -244,7 +244,7 @@ function iLQR(params,X,U,P,p,K,d,Xn,Un;atol=1e-5,max_iters = 25,verbose = true,�
     # end
 
     # initial rollout
-    N = params.N
+    N = length(X)
     for i = 1:N-1
         X[i+1] = discrete_dynamics(params,X[i],U[i],i)
     end
@@ -304,9 +304,9 @@ function iLQR(params,X,U,P,p,K,d,Xn,Un;atol=1e-5,max_iters = 25,verbose = true,�
             λ .+= ρ*hxv
             convio = max(convio, norm(hxv,Inf))
 
-            @show convio
+            verbose && @show convio
             if convio <1e-6
-                @info "success!"
+                verbose && @info "success!"
                 return nothing
             end
 
@@ -315,6 +315,24 @@ function iLQR(params,X,U,P,p,K,d,Xn,Un;atol=1e-5,max_iters = 25,verbose = true,�
         end
     end
     error("iLQR failed")
+end
+
+function nmpc!(params::NamedTuple,x0,U; ρ = 1e0, verbose = false)
+    N = length(U) + 1
+    nx, nu = params.nx, params.nu
+    X = [deepcopy(x0) for i = 1:N]
+    # U = [[.0001*randn();1.8] for i = 1:N-1]
+
+    Xn = deepcopy(X)
+    Un = deepcopy(U)
+
+
+    P = [zeros(nx,nx) for i = 1:N]   # cost to go quadratic term
+    p = [zeros(nx) for i = 1:N]      # cost to go linear term
+    d = [zeros(nu) for i = 1:N-1]    # feedforward control
+    K = [zeros(nu,nx) for i = 1:N-1] # feedback gain
+    iLQR(params,X,U,P,p,K,d,Xn,Un;atol=1e-2,max_iters = 3000,verbose = verbose,ρ = ρ, ϕ = 10.0 )
+    return X
 end
 let
     nx = 7
@@ -361,7 +379,6 @@ let
         nu = nu,
         ncx = ncx,
         ncu = ncu,
-        N = N,
         Q = Q,
         R = R,
         Qf = Qf,
@@ -376,35 +393,33 @@ let
     );
 
 
-    X = [deepcopy(x0) for i = 1:N]
-    U = [[.0001*randn();1.8] for i = 1:N-1]
-
-    Xn = deepcopy(X)
-    Un = deepcopy(U)
-
-
-    P = [zeros(nx,nx) for i = 1:N]   # cost to go quadratic term
-    p = [zeros(nx) for i = 1:N]      # cost to go linear term
-    d = [zeros(nu) for i = 1:N-1]    # feedforward control
-    K = [zeros(nu,nx) for i = 1:N-1] # feedback gain
-    iLQR(params,X,U,P,p,K,d,Xn,Un;atol=1e-2,max_iters = 3000,verbose = true,ρ = 1e3, ϕ = 10.0 )
-
-    # # run it again MPC style
     # X = [deepcopy(x0) for i = 1:N]
-    # X[1] += [1e3*randn(3)/ev.scale.dscale; zeros(4)]
-    #
-    # Xn = deepcopy(X)
-    # Un = deepcopy(U)
-    #
-    #
-    # P = [zeros(nx,nx) for i = 1:N]   # cost to go quadratic term
-    # p = [zeros(nx) for i = 1:N]      # cost to go linear term
-    # d = [zeros(nu) for i = 1:N-1]    # feedforward control
-    # K = [zeros(nu,nx) for i = 1:N-1] # feedback gain
-    # iLQR(params,X,U,P,p,K,d,Xn,Un;atol=1e-2,max_iters = 3000,verbose = true,ρ = 1e7, ϕ = 10.0 )
+    U = [[.0001*randn();1.8] for i = 1:N-1]
+    X = nmpc!(params,x0,U; ρ = 1e0, verbose = true)
 
-    X2m = hcat(Vector.(X)...)
-    Um = hcat(Vector.(U)...)
+    T = 100
+    Xsim = [deepcopy(NaN*x0) for i = 1:T]
+    Xsim[1] = x0
+    Usim = NaN*zeros(T)
+    dt = 2.0
+    println("------------NMPC starting-----------------")
+    for i = 1:T-1
+        # nmpc
+        _ = nmpc!(params,Xsim[i],U; ρ = 1e7, verbose = false)
+        Usim[i] = U[1][1]
+
+        # apply first control
+        Xsim[i+1] = rk4(params.ev,SVector{7}(Xsim[i]),SA[Usim[i]],dt/params.ev.scale.tscale)
+
+        # trim this control
+        U = U[2:end]
+    end
+    println("------------NMPC finished-----------------")
+
+
+    X2m = hcat(Vector.(Xsim)...)
+    # Um = hcat(Vector.(Usim)...)
+    Um = Usim
 
     mat"
     figure

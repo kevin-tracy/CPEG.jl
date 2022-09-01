@@ -5,7 +5,7 @@ function postprocess(ev::CPEGWorkspace,X,x0)
     cr = zeros(N)
     dr = zeros(N)
     for i = 1:N
-        alt[i] = norm(X[i][1:3]) - ev.params.gravity.R
+        alt[i] = altitude(ev.params.gravity, X[i][SA[1,2,3]])
         dr[i],cr[i] = rangedistances(ev,X[i],x0)
     end
     return alt, dr, cr
@@ -48,7 +48,7 @@ function rangedistances(ev::CPEGWorkspace,x::StaticVector,x0::StaticVector)
     v0 = x0[4:6]
     h = normalize(cross(r0,v0))
     # R = model.evmodel.planet.R
-    R = ev.params.gravity.R
+    R = ev.params.gravity.Rp_e
     r = x[1:3]
 
     # downrange stuff
