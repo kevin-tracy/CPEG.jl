@@ -27,7 +27,7 @@ function term_cost_expansion(p::NamedTuple,x)
     dx = x - p.Xref[p.N]
     return p.Qf, p.Qf*dx
 end
-function backward_pass!(params,X,U,P,p,d,K,reg,μ,μx,ρ,λ)
+function backward_pass!(params,X,U,P,p,d,K,reg,μ,μx,ρ,λ,w_cc)
     # backwards pass for Altro
     # P - vector of cost to go quadratic terms (matrices)
     # p - vector of cost to go linear terms (vectors)
@@ -81,6 +81,14 @@ function backward_pass!(params,X,U,P,p,d,K,reg,μ,μx,ρ,λ)
         Ju  += ∇hu'*(μ[k] + ρ*(mask * huv))
         Juu += ρ*∇hu'*mask*∇hu
 
+        # control coordination constraint
+        if k == 1
+            huv = control_coord_con(params,U[k])
+            ∇hu = control_coord_con_jac(params)
+            Ju  += ∇hu'*(w_cc + ρ*huv)
+            Juu += ρ*∇hu'*∇hu
+        end
+
         # state constraints
         hxv = ineq_con_x(params,X[k])
         mask = eval_mask(μx[k],hxv)
@@ -118,7 +126,7 @@ function backward_pass!(params,X,U,P,p,d,K,reg,μ,μx,ρ,λ)
 
     return ΔJ
 end
-function trajectory_AL_cost(params,X,U,μ,μx,ρ,λ)
+function trajectory_AL_cost(params,X,U,μ,μx,ρ,λ,w_cc)
     N = params.N
     J = 0.0
     for k = 1:N-1
@@ -133,6 +141,12 @@ function trajectory_AL_cost(params,X,U,μ,μx,ρ,λ)
         hxv = ineq_con_x(params,X[k])
         mask = eval_mask(μx[k],hxv)
         J += dot(μx[k],hxv) + 0.5*ρ*hxv'*mask*hxv
+
+        # control coordination
+        if k == 1
+            huv = control_coord_con(params,U[k])
+            J += dot(w_cc, huv) + 0.5*ρ*huv'*huv
+        end
     end
 
     # AL terms for state constraint at last time step
@@ -146,12 +160,12 @@ function trajectory_AL_cost(params,X,U,μ,μx,ρ,λ)
     J += dot(λ,hxv) + 0.5*ρ*hxv'*hxv
     return J
 end
-function forward_pass!(params,X,U,K,d,ΔJ,Xn,Un,μ,μx,ρ,λ; max_linesearch_iters = 20)
+function forward_pass!(params,X,U,K,d,ΔJ,Xn,Un,μ,μx,ρ,λ,w_cc; max_linesearch_iters = 20)
 
     N = params.N
     α = 1.0
 
-    J = trajectory_AL_cost(params,X,U,μ,μx,ρ,λ)
+    J = trajectory_AL_cost(params,X,U,μ,μx,ρ,λ,w_cc)
     for i = 1:max_linesearch_iters
 
         # Forward Rollout
@@ -159,7 +173,7 @@ function forward_pass!(params,X,U,K,d,ΔJ,Xn,Un,μ,μx,ρ,λ; max_linesearch_ite
             Un[k] = U[k] - α*d[k] - K[k]*(Xn[k]-X[k])
             Xn[k+1] = discrete_dynamics(params,Xn[k],Un[k],k)
         end
-        Jn = trajectory_AL_cost(params,Xn,Un,μ,μx,ρ,λ)
+        Jn = trajectory_AL_cost(params,Xn,Un,μ,μx,ρ,λ,w_cc)
 
         # linesearch
         if Jn < J
@@ -229,12 +243,15 @@ function get_convio(X,U,params)
         convio = max(convio,norm(hxv + abs.(hxv),Inf))
     end
 
+    # control coord con
+    huv = control_coord_con(params,U[1])
+    convio = max(convio, norm(huv,Inf))
+
     # goal constraint
     # hxv = X[N] - params.Xref[N]
     hxv = term_con(X[N], params)
     convio = max(convio, norm(hxv,Inf))
 end
-
 function iLQR(params,X,U,P,p,K,d,Xn,Un;atol=1e-3,max_iters = 250,verbose = true,ρ=1,ϕ=10)
 
     # first check the sizes of everything
@@ -267,9 +284,11 @@ function iLQR(params,X,U,P,p,K,d,Xn,Un;atol=1e-3,max_iters = 250,verbose = true,
 
     λ = zeros(length(params.term_idx))
 
+    w_cc = zeros(length(control_coord_con(params,U[1])))
+
     for iter = 1:max_iters
-        ΔJ = backward_pass!(params,X,U,P,p,d,K,reg,μ,μx,ρ,λ)
-        J, α = forward_pass!(params,X,U,K,d,ΔJ,Xn,Un,μ,μx,ρ,λ)
+        ΔJ = backward_pass!(params,X,U,P,p,d,K,reg,μ,μx,ρ,λ,w_cc)
+        J, α = forward_pass!(params,X,U,K,d,ΔJ,Xn,Un,μ,μx,ρ,λ,w_cc)
 
         Xhist[iter + 1] .= X
 
@@ -307,8 +326,12 @@ function iLQR(params,X,U,P,p,K,d,Xn,Un;atol=1e-3,max_iters = 250,verbose = true,
                 convio = max(convio,norm(hxv + abs.(hxv),Inf))
             end
 
+            # control coordination con
+            huv = control_coord_con(params,U[1])
+            w_cc .+= ρ*huv
+            convio = max(convio, norm(huv,Inf))
+
             # goal constraint
-            # hxv = X[N] - params.Xref[N]
             hxv = term_con(X[N], params)
             λ .+= ρ*hxv
             convio = max(convio, norm(hxv,Inf))
