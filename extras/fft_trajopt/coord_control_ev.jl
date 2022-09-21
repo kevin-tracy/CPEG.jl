@@ -13,7 +13,23 @@ using SuiteSparse
 using Printf
 using MATLAB
 
-include(joinpath(@__DIR__,"simple_altro.jl"))
+# include(joinpath(@__DIR__,"simple_altro.jl"))
+include(joinpath(@__DIR__,"simple_altro_coordinated.jl"))
+
+function control_coord_con(params,u)
+    # [
+    # u[params.idx_u[1]] - u[params.idx_u[2]];
+    # u[params.idx_u[1]] - u[params.idx_u[3]]
+    # ]
+    [
+    u[params.idx_u[1]][1] - u[params.idx_u[2]][1];
+    u[params.idx_u[1]][1] - u[params.idx_u[3]][1]
+    ]
+end
+function control_coord_con_jac(params)
+    # [diagm(ones(6)) diagm(-ones(6))]
+    FD.jacobian(_u -> control_coord_con(params,_u), ones(params.nu))
+end
 
 function dynamics_fudge(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}, kρ::T2) where {T,W,T2}
 
@@ -268,9 +284,10 @@ let
     plot($dt1)
     plot($dt2)
     plot($dt3)
-    title('dt's')
-    ylabel('dt's')
+    title('dts')
+    ylabel('dts')
     xlabel('knot point')
     hold off
     "
+
 end
