@@ -14,15 +14,10 @@ using Printf
 using MATLAB
 
 # include(joinpath(@__DIR__,"simple_altro.jl"))
-include(joinpath(@__DIR__,"simple_altro_coordinated.jl"))
+include(joinpath(@__DIR__,"simple_altro_coordinated_struct.jl"))
 
-function control_coord_con(params,u)
-    u[1:6] - u[7:12]
-end
-function control_coord_con_jac(params)
-    # [diagm(ones(6)) diagm(-ones(6))]
-    FD.jacobian(_u -> control_coord_con(params,_u), ones(params.nu))
-end
+
+
 function skew(ω::Vector{T}) where {T}
     return [0 -ω[3] ω[2];
             ω[3] 0 -ω[1];
@@ -61,16 +56,14 @@ end
 function ineq_con_u(p::NamedTuple,u)
     [u-p.u_max;-u + p.u_min] #≦ 0
 end
-function ineq_con_u_jac(params,u)
-    nu = params.nu
-    Array(float([I(nu);-I(nu)]))
-end
 function ineq_con_x(p,x)
     [x-p.x_max;-x + p.x_min]
 end
-function ineq_con_x_jac(params,x)
-    nx = params.nx
-    Array(float([I(nx);-I(nx)]))
+function control_coord_con(params,u)
+    u[1:6] - u[7:12]
+end
+function term_con(params,x)
+    x[params.term_idx] - params.Xref[params.N][params.term_idx]
 end
 
 let
@@ -96,15 +89,21 @@ let
     x_max =  200*ones(nx)
 
 
-    ncx = 2*nx
-    ncu = 2*nu
-
+    # altro settings
+    solver_settings = Solver_Settings()
+    solver_settings.max_iters            = 500
+    solver_settings.cost_tol             = 1e-2
+    solver_settings.d_tol                = 1e-2
+    solver_settings.max_linesearch_iters = 10
+    solver_settings.ρ0                   = 1e0
+    solver_settings.ϕ                    = 10.0
+    solver_settings.reg_min              = 1e-6
+    solver_settings.reg_max              = 1e3
+    solver_settings.convio_tol           = 1e-4
 
     params = (
         nx = nx,
         nu = nu,
-        ncx = ncx,
-        ncu = ncu,
         Q = Q,
         R = R,
         Qf = Qf,
@@ -120,7 +119,8 @@ let
         m1 = 1.0 ,
         m2 = 1.2,
         J1 = Diagonal(ones(3)),
-        J2 = 1.2*Diagonal(ones(3))
+        J2 = 1.2*Diagonal(ones(3)),
+        solver_settings = solver_settings
     );
 
 
@@ -135,7 +135,7 @@ let
     p = [zeros(nx) for i = 1:N]      # cost to go linear term
     d = [zeros(nu) for i = 1:N-1]    # feedforward control
     K = [zeros(nu,nx) for i = 1:N-1] # feedback gain
-    iLQR(params,X,U,P,p,K,d,Xn,Un;atol=1e-3,max_iters = 100,verbose = true,ρ = 1e0, ϕ = 10.0 )
+    iLQR(params,X,U,P,p,K,d,Xn,Un;verbose = true)
 
     Xm = hcat(X...)
     Um = hcat(U...)
