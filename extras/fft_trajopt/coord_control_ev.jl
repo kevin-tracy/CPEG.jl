@@ -16,22 +16,7 @@ import Random
 Random.seed!(1)
 
 # include(joinpath(@__DIR__,"simple_altro.jl"))
-include(joinpath(@__DIR__,"simple_altro_coordinated.jl"))
-
-function control_coord_con(params,u)
-    # [
-    # u[params.idx_u[1]] - u[params.idx_u[2]];
-    # u[params.idx_u[1]] - u[params.idx_u[3]]
-    # ]
-    [
-    u[params.idx_u[1]][1] - u[params.idx_u[2]][1];
-    u[params.idx_u[1]][1] - u[params.idx_u[3]][1]
-    ]
-end
-function control_coord_con_jac(params)
-    # [diagm(ones(6)) diagm(-ones(6))]
-    FD.jacobian(_u -> control_coord_con(params,_u), ones(params.nu))
-end
+include(joinpath(@__DIR__,"simple_altro_coordinated_struct.jl"))
 
 function dynamics_fudge(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}, kρ::T2) where {T,W,T2}
 
@@ -101,20 +86,6 @@ function discrete_dynamics(p::NamedTuple,x,u,k)
     ]
 end
 
-function ineq_con_u(p::NamedTuple,u)
-    [u-p.u_max;-u + p.u_min] #≦ 0
-end
-function ineq_con_u_jac(params,u)
-    nu = params.nu
-    Array(float([I(nu);-I(nu)]))
-end
-function ineq_con_x(p,x)
-    [x-p.x_max;-x + p.x_min]
-end
-function ineq_con_x_jac(params,x)
-    nx = params.nx
-    Array(float([I(nx);-I(nx)]))
-end
 
 function process_ev_run(ev,X,U)
     # t_vec = zeros(length(X))
@@ -130,6 +101,20 @@ function process_ev_run(ev,X,U)
 
     return alt, dr, cr, σ, dt, t_vec
 end
+function control_coord_con(params,u)
+    [u[params.idx_u[1]][1] - u[params.idx_u[2]][1];
+    u[params.idx_u[1]][1] - u[params.idx_u[3]][1]]
+end
+function term_con(params,x)
+    x[params.term_idx] - params.Xref[params.N][params.term_idx]
+end
+function ineq_con_u(p::NamedTuple,u)
+    [u-p.u_max;-u + p.u_min] #≦ 0
+end
+function ineq_con_x(p,x)
+    [x-p.x_max;-x + p.x_min]
+end
+
 let
     nx = 7*3
     nu = 2*3
@@ -153,9 +138,6 @@ let
     Uref = [kron(ones(3), [0,2.0]) for i = 1:N-1]
 
 
-    ncx = 2*nx
-    ncu = 2*nu
-
     ev = cp.CPEGWorkspace()
 
     # vehicle parameters
@@ -170,11 +152,21 @@ let
     # CPEG settings
     ev.scale.uscale = 1e1
 
+    # altro settings
+    solver_settings = Solver_Settings()
+    solver_settings.max_iters            = 500
+    solver_settings.cost_tol             = 1e-2
+    solver_settings.d_tol                = 1e-2
+    solver_settings.max_linesearch_iters = 10
+    solver_settings.ρ0                   = 1e3
+    solver_settings.ϕ                    = 10.0
+    solver_settings.reg_min              = 1e-6
+    solver_settings.reg_max              = 1e3
+    solver_settings.convio_tol           = 1e-4
+
     params = (
         nx = nx,
         nu = nu,
-        ncx = ncx,
-        ncu = ncu,
         Q = Q,
         R = R,
         Qf = Qf,
@@ -192,7 +184,8 @@ let
         kρ_2 = 1.1,
         kρ_3 = 0.9,
         idx_x = [(i-1)*7 .+ (1:7) for i = 1:3],
-        idx_u = [(i-1)*2 .+ (1:2) for i = 1:3]
+        idx_u = [(i-1)*2 .+ (1:2) for i = 1:3],
+        solver_settings = solver_settings
     );
 
 
@@ -207,7 +200,7 @@ let
     p = [zeros(nx) for i = 1:N]      # cost to go linear term
     d = [zeros(nu) for i = 1:N-1]    # feedforward control
     K = [zeros(nu,nx) for i = 1:N-1] # feedback gain
-    iLQR(params,X,U,P,p,K,d,Xn,Un;atol=1e-2,max_iters = 3000,verbose = true,ρ = 1e3, ϕ = 10.0 )
+    iLQR(params,X,U,P,p,K,d,Xn,Un;verbose = true)
 
     # X1m = hcat(Vector.(X)...)[params.idx_x[1],:]
     # U1m = hcat(Vector.(U)...)[params.idx_u[1],:]
