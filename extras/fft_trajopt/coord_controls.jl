@@ -63,7 +63,20 @@ function control_coord_con(params,u)
     u[1:6] - u[7:12]
 end
 function term_con(params,x)
-    x[params.term_idx] - params.Xref[params.N][params.term_idx]
+    # x[params.term_idx] - params.Xref[params.N][params.term_idx]
+    #
+    # x = xref
+    #
+    # x <= xref
+    # x >= xref
+    #
+    # x - xref ≦ 0
+    # xref - x ≦ 0
+
+    [
+    x[params.term_idx] - params.Xref[params.N][params.term_idx];
+    -(x[params.term_idx] - params.Xref[params.N][params.term_idx])
+    ]
 end
 
 let

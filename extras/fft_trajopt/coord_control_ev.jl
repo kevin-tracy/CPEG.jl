@@ -106,7 +106,11 @@ function control_coord_con(params,u)
     u[params.idx_u[1]][1] - u[params.idx_u[3]][1]]
 end
 function term_con(params,x)
-    x[params.term_idx] - params.Xref[params.N][params.term_idx]
+    # x[params.term_idx] - params.Xref[params.N][params.term_idx]
+    [
+    x[params.term_idx] - params.Xref[params.N][params.term_idx];
+    -(x[params.term_idx] - params.Xref[params.N][params.term_idx])
+    ]
 end
 function ineq_con_u(p::NamedTuple,u)
     [u-p.u_max;-u + p.u_min] #≦ 0
@@ -201,6 +205,8 @@ let
     d = [zeros(nu) for i = 1:N-1]    # feedforward control
     K = [zeros(nu,nx) for i = 1:N-1] # feedback gain
     iLQR(params,X,U,P,p,K,d,Xn,Un;verbose = true)
+
+    @show term_con(params,X[N])
 
     # X1m = hcat(Vector.(X)...)[params.idx_x[1],:]
     # U1m = hcat(Vector.(U)...)[params.idx_u[1],:]

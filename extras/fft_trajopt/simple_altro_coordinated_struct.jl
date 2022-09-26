@@ -67,11 +67,12 @@ function backward_pass!(params,X,U,P,p,d,K,reg,μ,μx,ρ,λ,w_cc)
 
     # add AL terms for goal constraint
     hxv = term_con(params, X[N])
+    mask = eval_mask(λ,hxv)
     ∇hx = term_con_jac(params, X[N])
 
     # add these into the CTG p and P
-    p[N]  += ∇hx'*(λ + ρ*hxv)
-    P[N]  += ρ*∇hx'∇hx
+    p[N]  += ∇hx'*(λ + ρ*(mask * hxv))
+    P[N]  += ρ*∇hx'*mask*∇hx
 
     # iterate from N-1 to 1 backwards
     for k = (N-1):(-1):1
@@ -163,7 +164,8 @@ function trajectory_AL_cost(params,X,U,μ,μx,ρ,λ,w_cc)
 
     # AL terms for goal constraint
     hxv = term_con(params, X[N])
-    J += dot(λ,hxv) + 0.5*ρ*hxv'*hxv
+    mask = eval_mask(λ, hxv)
+    J += dot(λ,hxv) + 0.5*ρ*hxv'*mask*hxv
     return J
 end
 function forward_pass!(params,X,U,K,d,ΔJ,Xn,Un,μ,μx,ρ,λ,w_cc)
@@ -344,8 +346,9 @@ function iLQR(params,X,U,P,p,K,d,Xn,Un;verbose = true)
 
             # goal constraint
             hxv = term_con(params, X[N])
-            λ .+= ρ*hxv
-            convio = max(convio, norm(hxv,Inf))
+            mask = eval_mask(λ, hxv)
+            λ .= max.(0, λ + ρ*mask*hxv)
+            convio = max(convio,norm(hxv + abs.(hxv),Inf))
 
             # @show convio
             if convio < params.solver_settings.convio_tol
