@@ -125,14 +125,13 @@ function ineq_con_x(p,x)
     [x-p.x_max;-x + p.x_min]
 end
 
-let
+function cpeg_mpc(ev::cp.CPEGWorkspace, N::Ti, x0_scaled::Vector{Tf}, U_in, ρ0) where {Ti,Tf}
     nx = 7*3
     nu = 2*3
     # N = 125
-    N = 44
     Q = kron(I(3),Diagonal([0,0,0,0,0,0,1e-4]))
     Qf = kron(I(3),Diagonal([1,1,1,0,0,0,1e-4]))
-    R = kron(I(3),Diagonal([.1,100]))
+    R = kron(I(3),Diagonal([1,100]))
 
     u_min = kron(ones(3), [-100, .5])
     u_max = kron(ones(3),  [100, 4])
@@ -144,25 +143,11 @@ let
 
     dt = NaN
     # x0 = kron(ones(3), [3.5212,0,0, -1.559452236319901, 5.633128235948198,0,0.05235987755982989])
-    x0 = kron(ones(3), [3.365372057892319, 0.5801542034944096, 0.011963324028461796, -0.18019498856602612, 0.8906323857048121, -0.010215354156052563, -1.2012301276375215])
+    x0 = kron(ones(3), x0_scaled)
     xg = kron(ones(3), [3.34795153940262, 0.6269403895311674, 0.008024160056155994, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629])
     Xref = [copy(xg) for i = 1:N]
     Uref = [kron(ones(3), [0,2.0]) for i = 1:N-1]
 
-
-    ev = cp.CPEGWorkspace()
-
-    # vehicle parameters
-    ev.params.aero.Cl = 0.29740410453983374
-    ev.params.aero.Cd = 1.5284942035954776
-    ev.params.aero.A = 15.904312808798327    # m²
-    ev.params.aero.m = 2400.0                # kg
-
-    # sim stuff
-    ev.dt = 2.0 # seconds
-
-    # CPEG settings
-    ev.scale.uscale = 1e1
 
     # altro settings
     solver_settings = Solver_Settings()
@@ -170,12 +155,11 @@ let
     solver_settings.cost_tol             = 1e-2
     solver_settings.d_tol                = 1e-2
     solver_settings.max_linesearch_iters = 10
-    solver_settings.ρ0                   = 1e3
-    solver_settings.ρ_max                = 1e12
+    solver_settings.ρ0                   = ρ0
     solver_settings.ϕ                    = 10.0
-    solver_settings.reg_min              = 1e-4
+    solver_settings.reg_min              = 1e-6
     solver_settings.reg_max              = 1e3
-    solver_settings.convio_tol           = 1e-3
+    solver_settings.convio_tol           = 1e-4
 
     params = (
         nx = nx,
@@ -203,8 +187,8 @@ let
 
 
     X = [deepcopy(x0) for i = 1:N]
-    U = [kron(ones(3), [.0001*randn();1.8]) for i = 1:N-1]
-
+    # U = [kron(ones(3), [.0001*randn();1.8]) for i = 1:N-1]
+    U = deepcopy(U_in)
     Xn = deepcopy(X)
     Un = deepcopy(U)
 
@@ -215,33 +199,165 @@ let
     K = [zeros(nu,nx) for i = 1:N-1] # feedback gain
     iLQR(params,X,U,P,p,K,d,Xn,Un;verbose = true)
 
+    return U
+    #
+    # # X1m = hcat(Vector.(X)...)[params.idx_x[1],:]
+    # # U1m = hcat(Vector.(U)...)[params.idx_u[1],:]
+    # # X2m = hcat(Vector.(X)...)[params.idx_x[2],:]
+    # # U2m = hcat(Vector.(U)...)[params.idx_u[2],:]
+    # # X3m = hcat(Vector.(X)...)[params.idx_x[3],:]
+    # # U3m = hcat(Vector.(U)...)[params.idx_u[3],:]
+    #
+    # X1 = [X[i][params.idx_x[1]] for i = 1:length(X)]
+    # X2 = [X[i][params.idx_x[2]] for i = 1:length(X)]
+    # X3 = [X[i][params.idx_x[3]] for i = 1:length(X)]
+    # U1 = [U[i][params.idx_u[1]] for i = 1:length(U)]
+    # U2 = [U[i][params.idx_u[2]] for i = 1:length(U)]
+    # U3 = [U[i][params.idx_u[3]] for i = 1:length(U)]
+    #
+    # alt1, dr1, cr1, σ1, dt1, t_vec1, r1, v1 = process_ev_run(ev,X1,U1)
+    # alt2, dr2, cr2, σ2, dt2, t_vec2, r2, v2 = process_ev_run(ev,X2,U2)
+    # alt3, dr3, cr3, σ3, dt3, t_vec3, r3, v3 = process_ev_run(ev,X3,U3)
+    #
+    # mat"
+    # figure
+    # hold on
+    # plot($dr1/1000,$cr1/1000)
+    # plot($dr2/1000,$cr2/1000)
+    # plot($dr3/1000,$cr3/1000)
+    # xlabel('downrange (km)')
+    # ylabel('crossrange (km)')
+    # hold off
+    # "
+    # #
+    # mat"
+    # figure
+    # hold on
+    # plot($dr1/1000,$alt1/1000)
+    # plot($dr2/1000,$alt2/1000)
+    # plot($dr3/1000,$alt3/1000)
+    # xlabel('downrange (km)')
+    # ylabel('altitude (km)')
+    # hold off
+    # "
+    #
+    # v1s = [norm(v1[i]) for i = 1:N]
+    # v2s = [norm(v2[i]) for i = 1:N]
+    # v3s = [norm(v3[i]) for i = 1:N]
+    #
+    # mat"
+    # figure
+    # hold on
+    # plot($t_vec1,$v1s)
+    # plot($t_vec2,$v2s)
+    # plot($t_vec3,$v3s)
+    # hold off
+    # "
+    # #
+    # # mat"
+    # # figure
+    # # hold on
+    # # title('States')
+    # # plot($t_vec,$X2m')
+    # # legend('px','py','pz','vx','vy','vz','sigma')
+    # # xlabel('Time (s)')
+    # # hold off
+    # # "
+    # #
+    # # mat"
+    # # figure
+    # # hold on
+    # # title('Controls')
+    # # plot($t_vec(1:end-1), $Um')
+    # # legend('sigma dot','dt')
+    # # xlabel('Time (s)')
+    # # hold off
+    # # "
+    # #
+    # mat"
+    # figure
+    # hold on
+    # plot($t_vec1,rad2deg($σ1))
+    # plot($t_vec2,rad2deg($σ2))
+    # plot($t_vec3,rad2deg($σ3))
+    # title('Bank Angle')
+    # ylabel('Bank Angle (degrees)')
+    # xlabel('Time (s)')
+    # hold off
+    # "
+    # mat"
+    # figure
+    # hold on
+    # plot($dt1)
+    # plot($dt2)
+    # plot($dt3)
+    # title('dts')
+    # ylabel('dts')
+    # xlabel('knot point')
+    # hold off
+    # "
 
-    e = norm(X[end][1:3] - params.Xref[end][1:3])*ev.scale.dscale/1000
-    @show e
-    # X1m = hcat(Vector.(X)...)[params.idx_x[1],:]
-    # U1m = hcat(Vector.(U)...)[params.idx_u[1],:]
-    # X2m = hcat(Vector.(X)...)[params.idx_x[2],:]
-    # U2m = hcat(Vector.(U)...)[params.idx_u[2],:]
-    # X3m = hcat(Vector.(X)...)[params.idx_x[3],:]
-    # U3m = hcat(Vector.(U)...)[params.idx_u[3],:]
+end
 
-    X1 = [X[i][params.idx_x[1]] for i = 1:length(X)]
-    X2 = [X[i][params.idx_x[2]] for i = 1:length(X)]
-    X3 = [X[i][params.idx_x[3]] for i = 1:length(X)]
-    U1 = [U[i][params.idx_u[1]] for i = 1:length(U)]
-    U2 = [U[i][params.idx_u[2]] for i = 1:length(U)]
-    U3 = [U[i][params.idx_u[3]] for i = 1:length(U)]
 
-    alt1, dr1, cr1, σ1, dt1, t_vec1, r1, v1 = process_ev_run(ev,X1,U1)
-    alt2, dr2, cr2, σ2, dt2, t_vec2, r2, v2 = process_ev_run(ev,X2,U2)
-    alt3, dr3, cr3, σ3, dt3, t_vec3, r3, v3 = process_ev_run(ev,X3,U3)
+let
+
+    # let's run some MPC
+    ev = cp.CPEGWorkspace()
+
+    # vehicle parameters
+    ev.params.aero.Cl = 0.29740410453983374
+    ev.params.aero.Cd = 1.5284942035954776
+    ev.params.aero.A = 15.904312808798327    # m²
+    ev.params.aero.m = 2400.0                # kg
+
+    # sim stuff
+    ev.dt = 2.0 # seconds
+
+    # CPEG settings
+    ev.scale.uscale = 1e1
+
+    # N
+    N = 125
+
+    # initial condition
+    x0_scaled = [3.5212,0,0, -1.559452236319901, 5.633128235948198,0,0.05235987755982989]
+
+    # initial control
+    U_in = [zeros(6) for i = 1:N-1]
+    for i = 1:N-1
+        U_in[i] = kron(ones(3), [.0001*randn();1.8])
+    end
+
+    # initial penalty
+    ρ0 = 1e3
+
+    # call mpc
+    U = cpeg_mpc(ev, N, x0_scaled, U_in, ρ0)
+
+    # main sim
+    T = 100
+    dt = 2.0
+    Xsim = [zeros(7) for i = 1:T]
+    Xsim[1] = x0_scaled
+    Usim = [zeros(2) for i = 1:T]
+    for i = 1:T-1
+        Usim[i] = U[1][1:2] # pull just the bank angle and dt
+        Xsim[i+1] = rk4_fudge(ev,SVector{7}(Xsim[i]),SA[Usim[i][1]],Usim[i][2]/ev.scale.tscale, 1.00)
+
+        # call mpc
+        U = cpeg_mpc(ev, (N-i), Xsim[i+1], U[2:end] , 1e3)
+    end
+
+    Usim = [[Usim[i];dt] for i = 1:(T-1)]
+    alt1, dr1, cr1, σ1, dt1, t_vec1, r1, v1 = process_ev_run(ev,Xsim,Usim)
+    # alt2, dr2, cr2, σ2, dt2, t_vec2, r2, v2 = process_ev_run(ev,X2,U2)
+    # alt3, dr3, cr3, σ3, dt3, t_vec3, r3, v3 = process_ev_run(ev,X3,U3)
 
     mat"
     figure
     hold on
     plot($dr1/1000,$cr1/1000)
-    plot($dr2/1000,$cr2/1000)
-    plot($dr3/1000,$cr3/1000)
     xlabel('downrange (km)')
     ylabel('crossrange (km)')
     hold off
@@ -251,24 +367,19 @@ let
     figure
     hold on
     plot($dr1/1000,$alt1/1000)
-    plot($dr2/1000,$alt2/1000)
-    plot($dr3/1000,$alt3/1000)
     xlabel('downrange (km)')
     ylabel('altitude (km)')
     hold off
     "
 
-    v1s = [norm(v1[i]) for i = 1:N]
-    v2s = [norm(v2[i]) for i = 1:N]
-    v3s = [norm(v3[i]) for i = 1:N]
+    v1s = [norm(v1[i]) for i = 1:T]
+    # v2s = [norm(v2[i]) for i = 1:N]
+    # v3s = [norm(v3[i]) for i = 1:N]
 
     mat"
     figure
     hold on
     plot($t_vec1,$v1s)
-    plot($t_vec2,$v2s)
-    plot($t_vec3,$v3s)
-    title('velocities')
     hold off
     "
     #
@@ -296,8 +407,6 @@ let
     figure
     hold on
     plot($t_vec1,rad2deg($σ1))
-    plot($t_vec2,rad2deg($σ2))
-    plot($t_vec3,rad2deg($σ3))
     title('Bank Angle')
     ylabel('Bank Angle (degrees)')
     xlabel('Time (s)')
@@ -307,24 +416,10 @@ let
     figure
     hold on
     plot($dt1)
-    plot($dt2)
-    plot($dt3)
     title('dts')
     ylabel('dts')
     xlabel('knot point')
     hold off
     "
-
-    U1m = hcat(U1...)
-    U2m = hcat(U2...)
-    U3m = hcat(U3...)
-    mat"
-    figure
-    hold on
-    plot($U1m')
-    hold off
-    "
-
-
 
 end

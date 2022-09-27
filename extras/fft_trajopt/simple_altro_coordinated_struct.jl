@@ -14,12 +14,13 @@ mutable struct Solver_Settings{Tf,Ti}
     d_tol                ::Tf
     max_linesearch_iters ::Ti
     ρ0                   ::Tf
+    ρ_max                ::Tf
     ϕ                    ::Tf
     reg_min              ::Tf
     reg_max              ::Tf
     convio_tol           ::Tf
     function Solver_Settings()
-        new{Float64,Int64}(500,1e-2,1e-2,10,1.0,10.0,1e-6,1e2,1e-5)
+        new{Float64,Int64}(500,1e-2,1e-2,10,1.0,1e10,10.0,1e-6,1e2,1e-5)
     end
 end
 
@@ -254,9 +255,8 @@ function get_convio(X,U,params)
     convio = max(convio, norm(huv,Inf))
 
     # goal constraint
-    # hxv = X[N] - params.Xref[N]
     hxv = term_con(params, X[N])
-    convio = max(convio, norm(hxv,Inf))
+    convio = max(convio,norm(hxv + abs.(hxv),Inf))
 end
 function iLQR(params,X,U,P,p,K,d,Xn,Un;verbose = true)
 
@@ -351,12 +351,14 @@ function iLQR(params,X,U,P,p,K,d,Xn,Un;verbose = true)
             convio = max(convio,norm(hxv + abs.(hxv),Inf))
 
             # @show convio
+            # @show convio
+            # @show params.solver_settings.convio_tol
             if convio < params.solver_settings.convio_tol
                 @info "success!"
                 return Xhist[1:(iter + 1)]
             end
 
-            ρ *= params.solver_settings.ϕ
+            ρ = min(ρ*params.solver_settings.ϕ, params.solver_settings.ρ_max)
         end
     end
     error("iLQR failed")
