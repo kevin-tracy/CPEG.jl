@@ -21,10 +21,8 @@ include(joinpath(@__DIR__,"simple_altro_coordinated_struct.jl"))
 
 function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/extras/fft_trajopt/atmo_samples/samp1.csv")
     TT = readdlm(path, ',')
-
     alt = Vector{Float64}(TT[2:end,2])
     density = Vector{Float64}(TT[2:end,end])
-
     return alt*1000, density
 end
 
@@ -372,10 +370,15 @@ let
     # alt2, dr2, cr2, σ2, dt2, t_vec2, r2, v2 = process_ev_run(ev,X2,U2)
     # alt3, dr3, cr3, σ3, dt3, t_vec3, r3, v3 = process_ev_run(ev,X3,U3)
 
+    # get the goals
+    Xg = [SA[3.34795153940262, 0.6269403895311674, 0.008024160056155994, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]]
+    alt_g, dr_g, cr_g = cp.postprocess_scaled(ev,Xg,Xsim[1])
+
     mat"
     figure
     hold on
     plot($dr1/1000,$cr1/1000)
+    plot($dr_g(1)/1000, $cr_g(1)/1000,'ro')
     xlabel('downrange (km)')
     ylabel('crossrange (km)')
     hold off
@@ -385,6 +388,7 @@ let
     figure
     hold on
     plot($dr1/1000,$alt1/1000)
+    plot($dr_g(1)/1000, $alt_g(1)/1000, 'ro')
     xlabel('downrange (km)')
     ylabel('altitude (km)')
     hold off
