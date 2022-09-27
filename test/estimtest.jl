@@ -75,7 +75,7 @@ for i = 1:(N-1)
     # println(alt, i)
     global idx_trn
     idx_trn += 1
-    if alt < 1e4
+    if alt <= 1e4
         println("alt ",alt," - lat ",lat," - lon ",lon)
         break
     end
@@ -190,6 +190,7 @@ ylim([0.7 0.82])
 hold off
 set(gca,'FontSize',14)
 saveas(gcf,'plots/krho.eps','epsc')
+saveas(gcf,'plots/krho.png')
 "
 
 mat"
@@ -207,5 +208,6 @@ ylim([0.7 0.82])
 hold off
 set(gca,'FontSize',14)
 saveas(gcf,'plots/krhotime.eps','epsc')
+saveas(gcf,'plots/krhotime.png')
 "
 # @test a1 ≈ (a1_central + a1_j2) rtol = 1e-12

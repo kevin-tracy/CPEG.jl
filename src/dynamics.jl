@@ -13,7 +13,7 @@ function dynamics(ev::CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}) where {T,
     h = altitude(ev.params.gravity, r)[1]
 
     # density
-    ρ = density(ev.params.density, h)
+    ρ = density_spline(ev.params.density, h)
     println("alt ",h)
     # lift and drag magnitudes
     L, D = LD_mags(ev.params.aero,ρ,r,v)

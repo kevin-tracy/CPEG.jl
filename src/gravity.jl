@@ -34,7 +34,7 @@ function altitude(g::GravityParameters, rp::SVector{3, T}) where T
     f = (g.Rp_e-g.Rp_p)/g.Rp_e  # flattening
     e = (1-(1-f)^2) # ellepticity (Note: considered as square)
     r = sqrt(rp[1]^2 + rp[2]^2)
-
+    # print(rp)
     # Calculate initial guesses for reduced latitude (latr) and planet-detic latitude (latd)
     latr = atan(rp[3]/((1-f)*r))  # reduced latitude
     latd = atan((rp[3] + (e*(1-f)*g.Rp_e*sin(latr)^3)/(1-e)) / ( r - e*g.Rp_e*cos(latr)^3 ) )
@@ -63,7 +63,6 @@ function altitude(g::GravityParameters, rp::SVector{3, T}) where T
     #Calculate altitude
     N = g.Rp_e / (1-e*sin(lat)^2)^0.5 # radius of curvature in the vertical prime
     h = r*cos(lat) + (rp[3] + e*N*sin(lat))*sin(lat) - N
-
     # h = norm(r) - g.Rp_e
     # print("h2 - ", h2, '\n')
     # print("h1 - ", h, '\n')
