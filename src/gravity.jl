@@ -30,44 +30,44 @@ end
                            z*(1 - Re_r_sqr*(five_z_sqr - 3))]
 end
 
-function altitude(g::GravityParameters, rp::SVector{3, T}) where T
-    f = (g.Rp_e-g.Rp_p)/g.Rp_e  # flattening
-    e = (1-(1-f)^2) # ellepticity (Note: considered as square)
-    r = sqrt(rp[1]^2 + rp[2]^2)
-    # print(rp)
-    # Calculate initial guesses for reduced latitude (latr) and planet-detic latitude (latd)
-    latr = atan(rp[3]/((1-f)*r))  # reduced latitude
-    latd = atan((rp[3] + (e*(1-f)*g.Rp_e*sin(latr)^3)/(1-e)) / ( r - e*g.Rp_e*cos(latr)^3 ) )
-    lat = latd
-
-    # Recalculate reduced latitude based on planet-detic latitude
-    latr2 = atan((1-f)*sin(latd)/cos(latd))
-    diff = latr - latr2
-    # print(diff, '\n')
-
-    iter = 0
-    while abs(diff) > 1e-10 && iter <= 1000
-        iter += 1
-        latr = latr2
-        latd = atan((rp[3]+(e*(1-f)*g.Rp_e*sin(latr)^3)/(1-e))/(r - e*g.Rp_e*cos(latr)^3))
-        latr2 = atan((1-f)*sin(latd)/ cos(latd))
-        diff = latr - latr2
-        if iter == 1000
-            error("Lat failed: reached max iters")
-        end
-        lat = latd
-    end
-
-    #Calculate longitude
-    lon = atan(rp[2],rp[1]) # -180<lon<180
-    #Calculate altitude
-    N = g.Rp_e / (1-e*sin(lat)^2)^0.5 # radius of curvature in the vertical prime
-    h = r*cos(lat) + (rp[3] + e*N*sin(lat))*sin(lat) - N
-    # h = norm(r) - g.Rp_e
-    # print("h2 - ", h2, '\n')
-    # print("h1 - ", h, '\n')
-    return [h, lat, lon]
-end
+# function altitude(g::GravityParameters, rp::SVector{3, T}) where T
+#     f = (g.Rp_e-g.Rp_p)/g.Rp_e  # flattening
+#     e = (1-(1-f)^2) # ellepticity (Note: considered as square)
+#     r = sqrt(rp[1]^2 + rp[2]^2)
+#     # print(rp)
+#     # Calculate initial guesses for reduced latitude (latr) and planet-detic latitude (latd)
+#     latr = atan(rp[3]/((1-f)*r))  # reduced latitude
+#     latd = atan((rp[3] + (e*(1-f)*g.Rp_e*sin(latr)^3)/(1-e)) / ( r - e*g.Rp_e*cos(latr)^3 ) )
+#     lat = latd
+#
+#     # Recalculate reduced latitude based on planet-detic latitude
+#     latr2 = atan((1-f)*sin(latd)/cos(latd))
+#     diff = latr - latr2
+#     # print(diff, '\n')
+#
+#     iter = 0
+#     while abs(diff) > 1e-10 && iter <= 1000
+#         iter += 1
+#         latr = latr2
+#         latd = atan((rp[3]+(e*(1-f)*g.Rp_e*sin(latr)^3)/(1-e))/(r - e*g.Rp_e*cos(latr)^3))
+#         latr2 = atan((1-f)*sin(latd)/ cos(latd))
+#         diff = latr - latr2
+#         if iter == 1000
+#             error("Lat failed: reached max iters")
+#         end
+#         lat = latd
+#     end
+#
+#     #Calculate longitude
+#     lon = atan(rp[2],rp[1]) # -180<lon<180
+#     #Calculate altitude
+#     N = g.Rp_e / (1-e*sin(lat)^2)^0.5 # radius of curvature in the vertical prime
+#     h = r*cos(lat) + (rp[3] + e*N*sin(lat))*sin(lat) - N
+#     # h = norm(r) - g.Rp_e
+#     # print("h2 - ", h2, '\n')
+#     # print("h1 - ", h, '\n')
+#     return [h, lat, lon]
+# end
 
 
 # mass = 6.4185e23  # mass, kg
