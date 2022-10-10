@@ -26,14 +26,14 @@ mutable struct AeroParameters
 
         Cl = CN_body*cos(α)-CA_body*sin(α)
         Cd = CA_body*cos(α)+CN_body*sin(α)
-     
+
         # print(Cd,'\n')
         # print(Cl,'\n')
 
         # print(Cd2,'\n')
         # print(Cl2,'\n')
         # cross sectional area and mass
-        A = π*(2.25)^2 # m²
+        A = π*(base_radius)^2 # m²
         m = 2400.0     # kg
 
         return new(Cl, Cd, A, m)

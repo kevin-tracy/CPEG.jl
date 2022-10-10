@@ -10,19 +10,36 @@ function dynamics(ev::CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}) where {T,
     r, v = unscale_rv(ev.scale,r_scaled,v_scaled)
 
     # altitude
-    h = altitude(ev.params.gravity, r)
+    h,lat,lon = altitude(ev.params.gravity, r)
 
+    # Compute NED basis unit vectors for wind
+    uD,uN,uE = latlongtoNED(lat, lon)
+    # println("uD ", uD,"- uD norm" , norm(uD), " - uN ", uN, "- uN norm" , norm(uN), " - uE ", uE, "- uE norm" , norm(uE))
+    # println("v",v, "uN",uN)
+
+    vₙ = v'uN  # m / s
+    vₑ = v'uE  # m / s
     # density
-    ρ = density(ev.params.density, h)
+    ρ = density_spline(ev.params.density, h)
+    wE, wN, wU = wind_spline(ev.params.density,h)
+
+    # wE positive to the east , m / s, wN positive to the north , m / s, wU positive up , m / s
+
+    wind_pp = wN * uN + wE * uE - wU * uD  # wind velocity in pp frame , m / s
+    v_rw = v + wind_pp  # relative wind vector , m / s # if wind == 0, the velocity = v
+    v_rw_hat = v / norm(v_rw)  # relative wind unit vector , nd
+
+    # println("alt ",h, ρ)
+    println("velocity",v, "vel with wind", v_rw)
 
     # lift and drag magnitudes
-    L, D = LD_mags(ev.params.aero,ρ,r,v)
+    L, D = LD_mags(ev.params.aero,ρ,r,v_rw)
 
     # basis for e frame
-    e1, e2 = e_frame(r,v)
+    e1, e2 = e_frame(r,v_rw)
 
     # drag and lift accelerations
-    D_a = -(D/norm(v))*v
+    D_a = -(D/norm(v_rw))*v_rw
     L_a = L*sin(σ)*e1 + L*cos(σ)*e2
 
     # gravity
