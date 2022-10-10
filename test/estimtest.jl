@@ -1,12 +1,16 @@
 using Random
 using MATLAB
+using CSV
+# using DataFrames
 # include(joinpath(@__DIR__,"dynamics.jl"))
 # # include(joinpath(@__DIR__,"post_process.jl"))
 # include(joinpath(@__DIR__,"srekf.jl"))
-
+# include("/home/josephine/.julia/dev/CPEG/src/MarsGramDataset/all/")
 
 Random.seed!(1234)
 
+df = CSV.File("/home/josephine/.julia/dev/CPEG/src/MarsGramDataset/all/out1.csv")
+print(df)
 ev = CPEG.CPEGWorkspace()
 
 model = ev
@@ -53,7 +57,8 @@ F[1] = CPEG.chol(Matrix(Σ))
 σm_nw = zeros(N)
 σm_nw[1] = 1
 
-
+# initialize density
+ρ_spline = zeros(N)
 
 Q = diagm( [(.000005)^2*ones(3)/ev.scale.dscale; .000005^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-10)^2;(1e-10)^2;(1e-10)^2;(1e-10)^2])
 R = diagm( 10*[(.1)^2*ones(3)/ev.scale.dscale; (0.0002)^2*ones(3)/(ev.scale.dscale/ev.scale.tscale);1e-10])
@@ -67,6 +72,11 @@ end_idx = NaN
 for i = 1:(N-1)
     U[i] = [cos(i/10)/30]
     # U[i] = [pi/2]
+
+    ## real density for each time step
+    alt = CPEG.postprocess_es(model,[X[i]],x0)[1]
+    ρ_spline[i] = CPEG.density_spline(model.params.density, alt[1])
+
     X[i+1] = CPEG.rk4_est(model,X[i],U[i],dt)
     Y[i+1] = CPEG.measurement(model,X[i+1]) + kf_sys.ΓR*randn(7)
     μ[i+1], F[i+1] = CPEG.sqrkalman_filter(model, μ[i],F[i],U[i],Y[i+1],kf_sys)
@@ -86,6 +96,8 @@ for i = 1:(N-1)
     global idx_trn
     idx_trn += 1
     if alt <= 1e4
+        alt = CPEG.postprocess_es(model,[X[i+1]],x0)[1]
+        ρ_spline[i+1] = CPEG.density_spline(model.params.density, alt[1])
         println("alt ",alt," - lat ",lat," - lon ",lon)
         break
     end
@@ -101,7 +113,9 @@ F = F[1:idx_trn]
 σm_ρ = σm_ρ[1:idx_trn]
 σm_ew = σm_ew[1:idx_trn]
 σm_nw = σm_ew[1:idx_trn]
+ρ_spline = ρ_spline[1:idx_trn]
 N = idx_trn
+
 
 function mat_from_vec(a)
     "Turn a vector of vectors into a matrix"
@@ -136,6 +150,21 @@ verr = 1e3*([(ev.scale.dscale/ev.scale.tscale)*norm(X[i][4:6] - μ[i][4:6]) for 
 yperr = 1e3*([ev.scale.dscale*norm(X[i][1:3] - Y[i][1:3]) for i = 2:N])
 yverr = 1e3*([(ev.scale.dscale/ev.scale.tscale)*norm(X[i][4:6] - Y[i][4:6]) for i = 2:N])
 
+mat"
+figure
+hold on
+plot($alt/10^3,$ρ_spline)
+hold off
+ylabel('Density, kg/m^3')
+xlabel('Altitude, km')
+hold off
+set(gca,'FontSize',14)
+set(gca, 'YScale', 'log')
+%saveas(gcf,'plots/density.eps','epsc')
+pause(15)
+"
+
+# exit()
 mat"
 figure
 hold on

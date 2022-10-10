@@ -1,6 +1,6 @@
-cd("/Users/kevintracy/.julia/dev/CPEG")
+cd("/home/josephine/.julia/dev/CPEG")
 Pkg.activate(".")
-cd("/Users/kevintracy/.julia/dev/CPEG/src")
+cd("/home/josephine/.julia/dev/CPEG/src")
 using LinearAlgebra
 using StaticArrays
 using ForwardDiff
@@ -9,6 +9,7 @@ using SuiteSparse
 using Printf
 
 include("qp_solver.jl")
+include("reference_systems.jl")
 include("atmosphere.jl")
 include("scaling.jl")
 include("gravity.jl")
@@ -26,7 +27,7 @@ using MATLAB
 
 using JLD2
 
-@load "/Users/kevintracy/.julia/dev/CPEG/src/example_traj.jld2"
+@load "/home/josephine/.julia/dev/CPEG/src/example_traj.jld2"
 
 ev = CPEGWorkspace()
 
