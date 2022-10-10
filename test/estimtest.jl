@@ -10,7 +10,11 @@ using CSV
 Random.seed!(1234)
 
 df = CSV.File("/home/josephine/.julia/dev/CPEG/src/MarsGramDataset/all/out1.csv")
-print(df)
+# print(df)
+
+for row in df
+    println("values: $(row.HgtMOLA), $(row.Denkgm3), $(row.DensP)")
+end
 ev = CPEG.CPEGWorkspace()
 
 model = ev
