@@ -970,12 +970,14 @@ function eswind_spline(p::CPEGDensityParameters, h::T) where T
 end
 
 
-function esdynamics(ev::CPEGWorkspace, x::SVector{8,T}, u::SVector{1,W}) where {T,W}
+function esdynamics(ev::CPEGWorkspace, x::SVector{10,T}, u::SVector{1,W}) where {T,W}
     # scaled variables
     r_scaled = x[SA[1,2,3]]
     v_scaled = x[SA[4,5,6]]
     σ = x[7]
     kρ = x[8]
+    kwE = x[9]
+    kwN = x[10]
 
     # unscale
     r, v = unscale_rv(ev.scale,r_scaled,v_scaled)
@@ -991,6 +993,8 @@ function esdynamics(ev::CPEGWorkspace, x::SVector{8,T}, u::SVector{1,W}) where {
     ρ = esdensity_spline(ev,h)*(1+kρ)#esdensity(ev, h, 7.295*1e3)*(1+kρ)
     wE, wN, wU = eswind_spline(ev.params.density,h)
 
+    wE = wE*(1+kwE)
+    wN = wN*(1+kwN)
     # wE positive to the east , m / s, wN positive to the north , m / s, wU positive up , m / s
 
     wind_pp = wN * uN + wE * uE - wU * uD  # wind velocity in pp frame , m / s
@@ -1018,12 +1022,12 @@ function esdynamics(ev::CPEGWorkspace, x::SVector{8,T}, u::SVector{1,W}) where {
     # rescale units
     v,a = scale_va(ev.scale,v,a)
 
-    return SA[v[1],v[2],v[3],a[1],a[2],a[3],u[1]*ev.scale.uscale,0]
+    return SA[v[1],v[2],v[3],a[1],a[2],a[3],u[1]*ev.scale.uscale,0,0,0]
 end
 
 function rk4_est(
     ev::CPEGWorkspace,
-    x_n::SVector{8,T},
+    x_n::SVector{10,T},
     u::SVector{1,W},
     dt_s::Float64) where {T,W}
 
