@@ -315,9 +315,9 @@ function density_spline(p::CPEGDensityParameters, h::T) where T
     breaks = [10:5:60; 62:2.:70; 71:1.:120]
     # show(breaks)
     if h >= 120
-        h = 119.99
+        h = one(h)*119.99
     elseif h < 10
-        h = 10.0
+        h = one(h)*10.0
     end
     for jj in range(1, length(breaks)-1)
         if (h < breaks[jj+1] && h >= breaks[jj])
@@ -995,9 +995,9 @@ function wind_spline(p::CPEGDensityParameters, h::T) where T
     breaks = [10:5:35; 37:2.:50; 51:1.:120]
     # show(breaks)
     if h >= 120
-        h = 119.99
+        h = one(h)*119.99
     elseif h < 10
-        h = 10.0
+        h = one(h)*10.0
     end
     for jj in range(1, length(breaks)-1)
         if (h < breaks[jj+1] && h >= breaks[jj])
