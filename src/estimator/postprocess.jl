@@ -52,16 +52,16 @@ function altitude(ev,x)
 
     return norm(x[1:3])*ev.scale.dscale - ev.params.gravity.Rp_e
 end
-function anglebetween(r1,r2)
-    dp = dot(normalize(r1),normalize(r2))
-    if dp >1.000000001
-        error("over 1 in angle between")
-    end
-    if dp>1
-        dp = 1
-    end
-    return acos(dp)
-end
+# function anglebetween(r1,r2)
+#     dp = dot(normalize(r1),normalize(r2))
+#     if dp >1.000000001
+#         error("over 1 in angle between")
+#     end
+#     if dp>1
+#         dp = 1
+#     end
+#     return acos(dp)
+# end
 function rangedistances(ev,x,x0)
 
     # first we get the angular momentum

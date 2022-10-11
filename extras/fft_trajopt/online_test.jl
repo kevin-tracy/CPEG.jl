@@ -108,9 +108,28 @@ function dynamics_fudge(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}, 
 
     # altitude
     h,_,_ = cp.altitude(ev.params.gravity, r)
+    # @show typeof(r)
+    # @show typeof(h)
 
     # density
     ρ = kρ*cp.density(ev.params.density, h)
+    if typeof(ρ) != typeof(h)
+        @show typeof(ρ)
+        @show typeof(h)
+        @info "error 1"
+        error()
+    end
+    ρ2 = kρ*cp.density_spline(ev.params.density, h)
+    if typeof(ρ) != typeof(ρ2)
+        @show typeof(h)
+        @show typeof(ρ)
+        @show typeof(ρ2)
+        @info "error 2"
+        error()
+    end
+    # @show typeof(ρ)
+    # @show eltype(r)
+    # @show eltype(v)
 
     # lift and drag magnitudes
     L, D = cp.LD_mags(ev.params.aero,ρ,r,v)
