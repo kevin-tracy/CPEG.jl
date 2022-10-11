@@ -5,7 +5,7 @@ function postprocess(ev::CPEGWorkspace,X,x0)
     cr = zeros(N)
     dr = zeros(N)
     for i = 1:N
-        alt[i] = altitude(ev.params.gravity, X[i][SA[1,2,3]])
+        alt[i],_,_ = altitude(ev.params.gravity, X[i][SA[1,2,3]])
         dr[i],cr[i] = rangedistances(ev,X[i],x0)
     end
     return alt, dr, cr

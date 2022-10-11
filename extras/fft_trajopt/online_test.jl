@@ -23,14 +23,16 @@ function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/extras/fft_trajopt/a
     TT = readdlm(path, ',')
     alt = Vector{Float64}(TT[2:end,2])
     density = Vector{Float64}(TT[2:end,end])
-    return alt*1000, density
+    Ewind = Vector{Float64}(TT[2:end,7])
+    Nwind = Vector{Float64}(TT[2:end,9])
+    return alt*1000, density, Ewind, Nwind
 end
 
 function alt_from_x(ev::cp.CPEGWorkspace, x)
     r_scaled = x[SA[1,2,3]]
     v_scaled = SA[2,3,4.0]
     r, v = cp.unscale_rv(ev.scale,r_scaled,v_scaled)
-    h = cp.altitude(ev.params.gravity, r)
+    h,_,_ = cp.altitude(ev.params.gravity, r)
 end
 
 function dynamics_fudge_mg(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}, params::NamedTuple) where {T,W}
@@ -44,20 +46,27 @@ function dynamics_fudge_mg(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W
     r, v = cp.unscale_rv(ev.scale,r_scaled,v_scaled)
 
     # altitude
-    h = cp.altitude(ev.params.gravity, r)
+    # h = cp.altitude(ev.params.gravity, r)
+    h,lat,lon = cp.altitude(ev.params.gravity, r)
 
+    uD,uN,uE = cp.latlongtoNED(lat, lon)
     # density
     # ρ = kρ*cp.density(ev.params.density, h)
-    mat"$ρ = spline($params.altitudes,$params.densities, $h)"
+    mat"$ρ = spline($params.altitudes,$params.densities, $h);"
+    mat"$wE = spline($params.altitudes,$params.Ewind, $h);"
+    mat"$wN = spline($params.altitudes,$params.Nwind, $h);"
+
+    wind_pp = wN * uN + wE * uE #- wU * uD  # wind velocity in pp frame , m / s
+    v_rw = v + wind_pp  # relative wind vector , m / s # if wind == 0, the velocity = v
 
     # lift and drag magnitudes
-    L, D = cp.LD_mags(ev.params.aero,ρ,r,v)
+    L, D = cp.LD_mags(ev.params.aero,ρ,r,v_rw)
 
     # basis for e frame
-    e1, e2 = cp.e_frame(r,v)
+    e1, e2 = cp.e_frame(r,v_rw)
 
     # drag and lift accelerations
-    D_a = -(D/norm(v))*v
+    D_a = -(D/norm(v_rw))*v_rw
     L_a = L*sin(σ)*e1 + L*cos(σ)*e2
 
     # gravity
@@ -98,7 +107,7 @@ function dynamics_fudge(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}, 
     r, v = cp.unscale_rv(ev.scale,r_scaled,v_scaled)
 
     # altitude
-    h = cp.altitude(ev.params.gravity, r)
+    h,_,_ = cp.altitude(ev.params.gravity, r)
 
     # density
     ρ = kρ*cp.density(ev.params.density, h)
@@ -299,8 +308,8 @@ let
     x0_scaled = [3.5212,0,0, -1.559452236319901, 5.633128235948198,0,0.05235987755982989]
 
     # get atmosphere stuff
-    altitudes,densities = load_atmo()
-    params = (altitudes = altitudes, densities = densities)
+    altitudes,densities, Ewind, Nwind = load_atmo()
+    params = (altitudes = altitudes, densities = densities, Ewind = Ewind, Nwind = Nwind)
 
     # initial control
     U_in = [zeros(6) for i = 1:N-1]
@@ -347,13 +356,13 @@ let
         # if time steps are getting small, remove one off N_mpc
         if min_dt<1.5
             @info "time steps getting small"
-            N_mpc -= 1
+            N_mpc -= 2
         end
 
         # if time steps are getting big, add one to N_mpc
         if max_dt>2.5
             @info "time steps getting big"
-            N_mpc += 1
+            N_mpc += 2
         end
 
         # if N_mpc is really small, stop CPEG
