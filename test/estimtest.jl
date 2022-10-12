@@ -11,10 +11,15 @@ Random.seed!(1234)
 
 df = CSV.File("/home/josephine/.julia/dev/CPEG/src/MarsGramDataset/all/out1.csv")
 # print(df)
-
-for row in df
-    println("values: $(row.HgtMOLA), $(row.Denkgm3), $(row.DensP)")
+# print(size(df)[1])
+ρ_real = zeros(size(df))
+alt_real = zeros(size(df))
+for (index, row) in enumerate(df)
+    ρ_real[index] = row.DensP
+    alt_real[index] = row.HgtMOLA
+    # println("values: $(row.HgtMOLA), $(row.Denkgm3), $(row.DensP)")
 end
+# print(ρ_real)
 ev = CPEG.CPEGWorkspace()
 
 model = ev
@@ -63,6 +68,7 @@ F[1] = CPEG.chol(Matrix(Σ))
 
 # initialize density
 ρ_spline = zeros(N)
+ρ_interp = zeros(N)
 
 Q = diagm( [(.000005)^2*ones(3)/ev.scale.dscale; .000005^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-10)^2;(1e-10)^2;(1e-10)^2;(1e-10)^2])
 R = diagm( 10*[(.1)^2*ones(3)/ev.scale.dscale; (0.0002)^2*ones(3)/(ev.scale.dscale/ev.scale.tscale);1e-10])
@@ -73,13 +79,31 @@ kf_sys = (dt = dt, ΓR = CPEG.chol(R), ΓQ = CPEG.chol(Q))
 
 
 end_idx = NaN
+index_alt = NaN
 for i = 1:(N-1)
     U[i] = [cos(i/10)/30]
     # U[i] = [pi/2]
 
     ## real density for each time step
-    alt = CPEG.postprocess_es(model,[X[i]],x0)[1]
+    alt = CPEG.postprocess_es(model,[X[i]],x0)[1][1]
     ρ_spline[i] = CPEG.density_spline(model.params.density, alt[1])
+    #find \rho_real
+    global index_alt
+    for (index,h) in enumerate(alt_real)
+        # println("h ",h," alt",alt)
+        if h <= alt*1e-3
+            index_alt = index
+            # println("index ",index_alt," h", h," alt",alt)
+            break
+        end
+    end
+    x_interp = (alt*1e-3 - alt_real[index_alt-1]) / (alt_real[index_alt] - alt_real[index_alt-1])
+    ρ_interp[i] = x_interp* (ρ_real[index_alt]-ρ_real[index_alt-1]) + ρ_real[index_alt-1]
+    kρ = ρ_interp[i]/ρ_spline[i]
+    global kρ
+    # print()
+    X[i] = [X[i][1:7];kρ;X[i][9:10]]
+    # println("x_interp ",  x_interp, "alt ", alt, "alt_real1 ", alt_real[index_alt-1], "alt_real2 ", alt_real[index_alt])
 
     X[i+1] = CPEG.rk4_est(model,X[i],U[i],dt)
     Y[i+1] = CPEG.measurement(model,X[i+1]) + kf_sys.ΓR*randn(7)
@@ -102,7 +126,7 @@ for i = 1:(N-1)
     if alt <= 1e4
         alt = CPEG.postprocess_es(model,[X[i+1]],x0)[1]
         ρ_spline[i+1] = CPEG.density_spline(model.params.density, alt[1])
-        println("alt ",alt," - lat ",lat," - lon ",lon)
+        # println("alt ",alt," - lat ",lat," - lon ",lon)
         break
     end
 end
@@ -118,6 +142,7 @@ F = F[1:idx_trn]
 σm_ew = σm_ew[1:idx_trn]
 σm_nw = σm_ew[1:idx_trn]
 ρ_spline = ρ_spline[1:idx_trn]
+ρ_interp = ρ_interp[1:idx_trn]
 N = idx_trn
 
 
@@ -143,6 +168,8 @@ plot($Xm(7,:))
 hold off
 "
 
+println(ρ_spline)
+
 
 alt, dr, cr = CPEG.postprocess_es(model,X,x0)
 
@@ -157,10 +184,12 @@ yverr = 1e3*([(ev.scale.dscale/ev.scale.tscale)*norm(X[i][4:6] - Y[i][4:6]) for 
 mat"
 figure
 hold on
-plot($alt/10^3,$ρ_spline)
+p1 = plot($alt/10^3,$ρ_spline);
+p2 = plot($alt/10^3,$ρ_interp);
 hold off
 ylabel('Density, kg/m^3')
 xlabel('Altitude, km')
+legend([p1;p2],'ρ spline','ρ real','location','northeast')
 hold off
 set(gca,'FontSize',14)
 set(gca, 'YScale', 'log')
@@ -231,7 +260,7 @@ title('Atmospheric Correction Factor')
 legend([p1;p2;p3],'SREKF krho','3 sigma bounds','True krho','location','southeast')
 xlabel('Altitude, km')
 ylabel('k rho')
-ylim([0.7 0.82])
+# ylim([0.7 0.82])
 hold off
 set(gca,'FontSize',14)
 saveas(gcf,'plots/krho.eps','epsc')
@@ -249,11 +278,47 @@ title('Atmospheric Correction Factor')
 legend([p1;p2;p3],'SREKF krho','3 sigma bounds','True krho','location','southeast')
 xlabel('Time, s')
 ylabel('k rho')
-ylim([0.7 0.82])
+# ylim([0.7 0.82])
 hold off
 set(gca,'FontSize',14)
 saveas(gcf,'plots/krhotime.eps','epsc')
 saveas(gcf,'plots/krhotime.png')
+"
+
+mat"
+figure
+hold on
+p1 = plot($alt_k/1e3,$μm(8,:)','b')
+p2= plot($alt_k/1e3,$μm(8,:)' + 3*$σm_ρ,'r--')
+plot($alt_k/1e3,$μm(8,:)' - 3*$σm_ρ,'r--')
+p3 = plot($alt/1e3,$Xm(8,:)','color',[0.9290, 0.6940, 0.1250])
+title('Atmospheric Correction Factor')
+legend([p1;p2;p3],'SREKF krho','3 sigma bounds','True krho','location','southeast')
+xlabel('Altitude, km')
+ylabel('k rho')
+# ylim([0.7 0.82])
+hold off
+set(gca,'FontSize',14)
+saveas(gcf,'plots/rho.eps','epsc')
+saveas(gcf,'plots/rho.png')
+"
+
+mat"
+figure
+hold on
+p1 = plot($t_vec,$ρ_spline*(1+μm(8,:)'),'b')
+%p2= plot($t_vec,$μm(8,:)' + 3*$σm_ρ,'r--')
+%plot($t_vec,$μm(8,:)' - 3*$σm_ρ,'r--')
+p2 = plot($t_vec,$ρ_interp','color',[0.9290, 0.6940, 0.1250])
+title('Atmospheric Density')
+legend([p1;p2],'SREKF rho',True rho','location','southeast')
+xlabel('Time, s')
+ylabel('ρ, kg/m^2')
+# ylim([0.7 0.82])
+hold off
+set(gca,'FontSize',14)
+saveas(gcf,'plots/rhotime.eps','epsc')
+saveas(gcf,'plots/rhotime.png')
 "
 
 mat"
