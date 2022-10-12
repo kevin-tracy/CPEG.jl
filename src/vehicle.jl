@@ -1,10 +1,11 @@
 
-struct Parameters
+struct Parameters{T}
     density::CPEGDensityParameters
+    dsp::density_spline_parameters{T}
     gravity::GravityParameters
     aero::AeroParameters
     function Parameters()
-        new(CPEGDensityParameters(),GravityParameters(),AeroParameters())
+        new{Float64}(CPEGDensityParameters(),density_spline_parameters(),GravityParameters(),AeroParameters())
     end
 end
 

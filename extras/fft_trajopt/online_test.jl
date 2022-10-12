@@ -112,21 +112,22 @@ function dynamics_fudge(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}, 
     # @show typeof(h)
 
     # density
-    ρ = kρ*cp.density(ev.params.density, h)
-    if typeof(ρ) != typeof(h)
-        @show typeof(ρ)
-        @show typeof(h)
-        @info "error 1"
-        error()
-    end
-    ρ2 = kρ*cp.density_spline(ev.params.density, h)
-    if typeof(ρ) != typeof(ρ2)
-        @show typeof(h)
-        @show typeof(ρ)
-        @show typeof(ρ2)
-        @info "error 2"
-        error()
-    end
+    # ρ = kρ*cp.density(ev.params.density, h)
+    # if typeof(ρ) != typeof(h)
+    #     @show typeof(ρ)
+    #     @show typeof(h)
+    #     @info "error 1"
+    #     error()
+    # end
+    ρ = kρ*cp.density_spline(ev.params.dsp, h)
+    # ρ = densisty_solin
+    # if typeof(ρ) != typeof(ρ2)
+    #     @show typeof(h)
+    #     @show typeof(ρ)
+    #     @show typeof(ρ2)
+    #     @info "error 2"
+    #     error()
+    # end
     # @show typeof(ρ)
     # @show eltype(r)
     # @show eltype(v)
@@ -274,9 +275,9 @@ function cpeg_mpc(ev::cp.CPEGWorkspace, N::Ti, x0_scaled::Vector{Tf}, U_in, ρ0)
         ev = ev,
         N = N,
         term_idx = [1,2,3,8,9,10,15,16,17],
-        kρ_1 = 1.0,
+        kρ_1 = 0.9,
         kρ_2 = 1.0,
-        kρ_3 = 1.0,
+        kρ_3 = 1.1,
         idx_x = [(i-1)*7 .+ (1:7) for i = 1:3],
         idx_u = [(i-1)*2 .+ (1:2) for i = 1:3],
         solver_settings = solver_settings
