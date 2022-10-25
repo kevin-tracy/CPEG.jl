@@ -274,7 +274,8 @@ function iLQR(params,X,U,P,p,K,d,Xn,Un,λ;verbose = true)
     μx = [zeros(length(ineq_con_x(params,X[1]))) for i = 1:N]
 
     # term con
-    # λ = zeros(length(term_con(params,X[N])))
+    λ = zeros(length(term_con(params,X[N])))
+    @show λ
 
     for iter = 1:params.solver_settings.max_iters
         ΔJ = backward_pass!(params,X,U,P,p,d,K,reg,μ,μx,ρ,λ)

@@ -35,67 +35,6 @@ function alt_from_x(ev::cp.CPEGWorkspace, x)
     h,_,_ = cp.altitude(ev.params.gravity, r)
 end
 
-function dynamics_fudge_mg(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}, params::NamedTuple) where {T,W}
-
-    # scaled variables
-    r_scaled = x[SA[1,2,3]]
-    v_scaled = x[SA[4,5,6]]
-    σ = x[7]
-
-    # unscale
-    r, v = cp.unscale_rv(ev.scale,r_scaled,v_scaled)
-
-    # altitude
-    # h = cp.altitude(ev.params.gravity, r)
-    h,lat,lon = cp.altitude(ev.params.gravity, r)
-
-    uD,uN,uE = cp.latlongtoNED(lat, lon)
-    # density
-    # ρ = kρ*cp.density(ev.params.density, h)
-    mat"$ρ = spline($params.altitudes,$params.densities, $h);"
-    mat"$wE = spline($params.altitudes,$params.Ewind, $h);"
-    mat"$wN = spline($params.altitudes,$params.Nwind, $h);"
-
-    wind_pp = wN * uN + wE * uE #- wU * uD  # wind velocity in pp frame , m / s
-    v_rw = v + wind_pp  # relative wind vector , m / s # if wind == 0, the velocity = v
-
-    # lift and drag magnitudes
-    L, D = cp.LD_mags(ev.params.aero,ρ,r,v_rw)
-
-    # basis for e frame
-    e1, e2 = cp.e_frame(r,v_rw)
-
-    # drag and lift accelerations
-    D_a = -(D/norm(v_rw))*v_rw
-    L_a = L*sin(σ)*e1 + L*cos(σ)*e2
-
-    # gravity
-    g = cp.gravity(ev.params.gravity,r)
-
-    # acceleration
-    ω = ev.planet.ω
-    a = D_a + L_a + g - 2*cross(ω,v) - cross(ω,cross(ω,r))
-
-    # rescale units
-    v,a = cp.scale_va(ev.scale,v,a)
-
-    return SA[v[1],v[2],v[3],a[1],a[2],a[3],u[1]*ev.scale.uscale]
-end
-
-function rk4_fudge_mg(
-    ev::cp.CPEGWorkspace,
-    x_n::SVector{7,T},
-    u::SVector{1,W},
-    dt_s::T2, params::NamedTuple) where {T,W,T2}
-
-    k1 = dt_s*dynamics_fudge_mg(ev,x_n,u,params)
-    k2 = dt_s*dynamics_fudge_mg(ev,x_n+k1/2,u,params)
-    k3 = dt_s*dynamics_fudge_mg(ev,x_n+k2/2,u,params)
-    k4 = dt_s*dynamics_fudge_mg(ev,x_n+k3,u,params)
-
-    return (x_n + (1/6)*(k1 + 2*k2 + 2*k3 + k4))
-end
-
 function dynamics_fudge(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}, kρ::T2) where {T,W,T2}
 
     # scaled variables
@@ -119,6 +58,12 @@ function dynamics_fudge(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}, 
     #     @info "error 1"
     #     error()
     # end
+    # @show h
+    if (h/1e3) > 125
+        @show h
+        @show x
+        @show u
+    end
     ρ = kρ*cp.density_spline(ev.params.dsp, h)
     # ρ = densisty_solin
     # if typeof(ρ) != typeof(ρ2)
@@ -170,8 +115,8 @@ function rk4_fudge(
 end
 
 function discrete_dynamics(p::NamedTuple,x,u,k)
-    x1 = x[p.idx_x[1]]
-    u1 = u[p.idx_u[1]]
+    x1 = x
+    u1 = u
     # x2 = x[p.idx_x[2]]
     # u2 = u[p.idx_u[2]]
     # x3 = x[p.idx_x[3]]
@@ -225,17 +170,30 @@ end
 function ineq_con_x(p,x)
     [x-p.x_max;-x + p.x_min]
 end
-
-function cpeg_mpc(ev::cp.CPEGWorkspace, N::Ti, x0_scaled::Vector{Tf}, U_in, ρ0,λ) where {Ti,Tf}
+function term_cost(p::NamedTuple,x)
+    idx = SA[1,2,3]
+    r = x[idx]
+    rf = p.Xref[p.N][idx]
+    e = p.Prf*(r - rf)
+    sqrt(dot(e,e) + 1e-5) + 0.5*p.Qf[7,7]*(x[7] - p.Xref[p.N][7])^2
+end
+function term_cost_expansion(p::NamedTuple,x)
+    H = ForwardDiff.hessian(_x -> term_cost(p,_x), x)
+    g = ForwardDiff.gradient(_x -> term_cost(p,_x), x)
+    H, g
+end
+function cpeg_mpc(ev::cp.CPEGWorkspace, N::Ti, x0_scaled::Vector{Tf}, ρ0,λ) where {Ti,Tf}
     nx = 7
     nu = 2
     # N = 125
     Q = Diagonal(SA[0,0,0,0,0,0,1e-4])
     rf = normalize([3.34795153940262, 0.6269403895311674, 0.008024160056155994])
-    Prf = I - rf*rf'
-    Qf = SMatrix{7,7}([100*Prf zeros(3,4);zeros(4,3) diagm([0,0,0,1e-4])])
-    # Qf = Diagonal(SA[100,100,100,0,0,0,1e-4])
-    R = Diagonal(SA[.1,100])
+    Prf = 1e2*(I - rf*rf')
+    # Qf = SMatrix{7,7}([1e3*Prf'*Prf zeros(3,4);zeros(4,3) diagm([0,0,0,1e-4])])
+    # γ = 1e3
+    Qf = Diagonal(SA[0,0,0,0,0,0,1e-1])
+    @info "Qf set to the right thing"
+    R = Diagonal(SA[10,10])*1e-3
 
     u_min = SA[-100, .01]
     u_max = SA[100, 4]
@@ -261,9 +219,9 @@ function cpeg_mpc(ev::cp.CPEGWorkspace, N::Ti, x0_scaled::Vector{Tf}, U_in, ρ0,
     solver_settings.max_linesearch_iters = 10
     solver_settings.ρ0                   = ρ0
     solver_settings.ϕ                    = 10.0
-    solver_settings.reg_min              = 1e-5
+    solver_settings.reg_min              = 1e-6
     solver_settings.reg_max              = 1e3
-    solver_settings.convio_tol           = 1.0e-3
+    solver_settings.convio_tol           = 1.5e-2
 
     params = (
         nx = nx,
@@ -286,18 +244,19 @@ function cpeg_mpc(ev::cp.CPEGWorkspace, N::Ti, x0_scaled::Vector{Tf}, U_in, ρ0,
         kρ_3 = 1.0,
         idx_x = [(i-1)*7 .+ SVector{7}(1:7) for i = 1:3],
         idx_u = [(i-1)*2 .+ SVector{2}(1:2) for i = 1:3],
-        solver_settings = solver_settings
+        solver_settings = solver_settings,
+        Prf = Prf
     );
 
 
     X = [deepcopy(x0) for i = 1:N]
     U = [SA[.000001*randn(),2.0] for i = 1:N-1]
     for i = 1:length(U)
-        if i <= length(U_in)
-            U[i] = 1*U_in[i]
-        else
+        # if i <= length(U_in)
+            # U[i] = 1*U_in[i]
+        # else
             U[i] = SA[.00001*randn(), 2.0]
-        end
+        # end
     end
     # U = deepcopy(U_in)
     Xn = deepcopy(X)
@@ -310,11 +269,11 @@ function cpeg_mpc(ev::cp.CPEGWorkspace, N::Ti, x0_scaled::Vector{Tf}, U_in, ρ0,
     K = [zeros(nu,nx) for i = 1:N-1] # feedback gain
     # λ = zeros(length(term_con(params,X[N])))
     λ = iLQR(params,X,U,P,p,K,d,Xn,Un,λ;verbose = true)
-    e = norm(X[end][1:3] - params.Xref[end][1:3])*ev.scale.dscale/1000
+    e = norm(Prf*(X[end][1:3] - params.Xref[end][1:3])*ev.scale.dscale/1000)
     @show λ
     @show e
 
-    return U, λ
+    return X,U, λ
 
 end
 
@@ -357,26 +316,26 @@ let
 
     # call mpc
     λ = @SVector zeros(3)
-    U, λ = cpeg_mpc(ev, N, x0_scaled, U_in, ρ0, λ)
+    # U, λ = cpeg_mpc(ev, N, x0_scaled, U_in, ρ0, λ)
 
     # main sim
-    T = 300
+    # T = 300
     N_mpc = 125
-    dt = 1.0
-    Xsim = [zeros(7) for i = 1:T]
-    Xsim[1] = x0_scaled
-    Usim = [zeros(2) for i = 1:T]
-    for i = 1:T-1
-        Usim[i] = U[1][1:2] # pull just the bank angle and dt
+    # dt = 1.0
+    # Xsim = [zeros(7) for i = 1:T]
+    # Xsim[1] = x0_scaled
+    # Usim = [zeros(2) for i = 1:T]
+    # for i = 1:T-1
+        # Usim[i] = U[1][1:2] # pull just the bank angle and dt
         # Xsim[i+1] = rk4_fudge_mg(ev,SVector{7}(Xsim[i]),SA[Usim[i][1]],Usim[i][2]/ev.scale.tscale, params)
-        Xsim[i+1] = rk4_fudge_mg(ev,SVector{7}(Xsim[i]),SA[Usim[i][1]],dt/ev.scale.tscale, params)
+        # Xsim[i+1] = rk4_fudge_mg(ev,SVector{7}(Xsim[i]),SA[Usim[i][1]],dt/ev.scale.tscale, params)
 
-        if alt_from_x(ev,Xsim[i+1]) < alt_from_x(ev,[3.34795153940262, 0.6269403895311674, 0.008024160056155994])
-            @info "SIM IS DONE"
-            Xsim = Xsim[1:i+1]
-            Usim = Usim[1:i]
-            break
-        end
+        # if alt_from_x(ev,Xsim[i+1]) < alt_from_x(ev,[3.34795153940262, 0.6269403895311674, 0.008024160056155994])
+        #     @info "SIM IS DONE"
+        #     Xsim = Xsim[1:i+1]
+        #     Usim = Usim[1:i]
+        #     break
+        # end
         # call mpc
         # @show i
         # @show (N-i)
@@ -388,10 +347,10 @@ let
         # # get min and max dt
         # min_dt = minimum(hcat(U...)[2,:])
         # max_dt = minimum(hcat(U...)[2,:])
-        dts = [U[i][2] for i = 1:length(U)]
-        tf = sum(dts)
-        N_mpc = Int(ceil(tf/2.0))
-
+        # dts = [U[i][2] for i = 1:length(U)]
+        # tf = sum(dts)
+        # N_mpc = Int(ceil(tf/2.0))
+        N_mpc = 125
         # if time steps are getting small, remove one off N_mpc
         # if min_dt<1.5
         #     @info "time steps getting small"
@@ -407,93 +366,93 @@ let
         # if N_mpc is really small, stop CPEG
         # @show N_mpc
         # @show N_mpc_2
-        if N_mpc < 3
-            @info "CPEG IS OFF"
-            U = U[2:end]
-        else
-            @show Xsim[i+1]
+        # if N_mpc < 3
+            # @info "CPEG IS OFF"
+            # U = U[2:end]
+        # else
+            # @show Xsim[i+1]
             λ = @SVector zeros(3)
-            U, λ = cpeg_mpc(ev, N_mpc, Xsim[i+1], U[2:end] , 1e3,λ)
-        end
-    end
+            Xsim,Usim, λ = cpeg_mpc(ev, N_mpc, x0_scaled, 1e0,λ)
+        # end
+    # end
 
-    Usim = [[Usim[i];dt] for i = 1:(length(Usim))]
-    alt1, dr1, cr1, σ1, dt1, t_vec1, r1, v1 = process_ev_run(ev,Xsim,Usim)
-    # alt2, dr2, cr2, σ2, dt2, t_vec2, r2, v2 = process_ev_run(ev,X2,U2)
-    # alt3, dr3, cr3, σ3, dt3, t_vec3, r3, v3 = process_ev_run(ev,X3,U3)
-
-    # get the goals
-    Xg = [SA[3.34795153940262, 0.6269403895311674, 0.008024160056155994, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]]
-    alt_g, dr_g, cr_g = cp.postprocess_scaled(ev,Xg,Xsim[1])
-
-    mat"
-    figure
-    hold on
-    plot($dr1/1000,$cr1/1000)
-    plot($dr_g(1)/1000, $cr_g(1)/1000,'ro')
-    xlabel('downrange (km)')
-    ylabel('crossrange (km)')
-    hold off
-    "
+    # Usim = [[Usim[i];dt] for i = 1:(length(Usim))]
+    # alt1, dr1, cr1, σ1, dt1, t_vec1, r1, v1 = process_ev_run(ev,Xsim,Usim)
+    # # alt2, dr2, cr2, σ2, dt2, t_vec2, r2, v2 = process_ev_run(ev,X2,U2)
+    # # alt3, dr3, cr3, σ3, dt3, t_vec3, r3, v3 = process_ev_run(ev,X3,U3)
     #
-    mat"
-    figure
-    hold on
-    plot($dr1/1000,$alt1/1000)
-    plot($dr_g(1)/1000, $alt_g(1)/1000, 'ro')
-    xlabel('downrange (km)')
-    ylabel('altitude (km)')
-    hold off
-    "
-
-    v1s = [norm(v1[i]) for i = 1:length(v1)]
-    # v2s = [norm(v2[i]) for i = 1:N]
-    # v3s = [norm(v3[i]) for i = 1:N]
-
-    mat"
-    figure
-    hold on
-    plot($t_vec1,$v1s)
-    hold off
-    "
+    # # get the goals
+    # Xg = [SA[3.34795153940262, 0.6269403895311674, 0.008024160056155994, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]]
+    # alt_g, dr_g, cr_g = cp.postprocess_scaled(ev,Xg,Xsim[1])
     #
     # mat"
     # figure
     # hold on
-    # title('States')
-    # plot($t_vec,$X2m')
-    # legend('px','py','pz','vx','vy','vz','sigma')
-    # xlabel('Time (s)')
+    # plot($dr1/1000,$cr1/1000)
+    # plot($dr_g(1)/1000, $cr_g(1)/1000,'ro')
+    # xlabel('downrange (km)')
+    # ylabel('crossrange (km)')
     # hold off
     # "
+    # #
+    # mat"
+    # figure
+    # hold on
+    # plot($dr1/1000,$alt1/1000)
+    # plot($dr_g(1)/1000, $alt_g(1)/1000, 'ro')
+    # xlabel('downrange (km)')
+    # ylabel('altitude (km)')
+    # hold off
+    # "
+    #
+    # v1s = [norm(v1[i]) for i = 1:length(v1)]
+    # # v2s = [norm(v2[i]) for i = 1:N]
+    # # v3s = [norm(v3[i]) for i = 1:N]
     #
     # mat"
     # figure
     # hold on
-    # title('Controls')
-    # plot($t_vec(1:end-1), $Um')
-    # legend('sigma dot','dt')
+    # plot($t_vec1,$v1s)
+    # hold off
+    # "
+    # #
+    # # mat"
+    # # figure
+    # # hold on
+    # # title('States')
+    # # plot($t_vec,$X2m')
+    # # legend('px','py','pz','vx','vy','vz','sigma')
+    # # xlabel('Time (s)')
+    # # hold off
+    # # "
+    # #
+    # # mat"
+    # # figure
+    # # hold on
+    # # title('Controls')
+    # # plot($t_vec(1:end-1), $Um')
+    # # legend('sigma dot','dt')
+    # # xlabel('Time (s)')
+    # # hold off
+    # # "
+    # #
+    # mat"
+    # figure
+    # hold on
+    # plot($t_vec1,rad2deg($σ1))
+    # title('Bank Angle')
+    # ylabel('Bank Angle (degrees)')
     # xlabel('Time (s)')
     # hold off
     # "
-    #
-    mat"
-    figure
-    hold on
-    plot($t_vec1,rad2deg($σ1))
-    title('Bank Angle')
-    ylabel('Bank Angle (degrees)')
-    xlabel('Time (s)')
-    hold off
-    "
-    mat"
-    figure
-    hold on
-    plot($dt1)
-    title('dts')
-    ylabel('dts')
-    xlabel('knot point')
-    hold off
-    "
+    # mat"
+    # figure
+    # hold on
+    # plot($dt1)
+    # title('dts')
+    # ylabel('dts')
+    # xlabel('knot point')
+    # hold off
+    # "
 
 end
