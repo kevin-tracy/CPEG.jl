@@ -10,7 +10,8 @@ using StatsBase
 
 Random.seed!(1234)
 
-df = CSV.File("/home/josephine/.julia/dev/CPEG/src/MarsGramDataset/all/out1.csv")
+# df = CSV.File("/home/josephine/.julia/dev/CPEG/src/MarsGramDataset/all/out1.csv")
+df = CSV.File("/Users/Josephine/.julia/dev/CPEG/src/MarsGramDataset/all/out1.csv")
 # print(df)
 # print(size(df)[1])
 ρ_real = zeros(size(df))
