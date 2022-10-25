@@ -17,12 +17,12 @@ using DelimitedFiles
 
 Random.seed!(1)
 
-function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/extras/fft_trajopt/atmo_samples/samp1.csv")
+function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/extras/fft_trajopt/atmo_samples/samp2.csv")
     TT = readdlm(path, ',')
     alt = Vector{Float64}(TT[2:end,2])
     density = Vector{Float64}(TT[2:end,end])
-    Ewind = Vector{Float64}(TT[2:end,7])
-    Nwind = Vector{Float64}(TT[2:end,9])
+    Ewind = Vector{Float64}(TT[2:end,8])
+    Nwind = Vector{Float64}(TT[2:end,10])
     return alt*1000, density, Ewind, Nwind
 end
 
@@ -106,29 +106,7 @@ function dynamics_fudge(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}, 
 
     # altitude
     h,_,_ = cp.altitude(ev.params.gravity, r)
-    # @show typeof(r)
-    # @show typeof(h)
-
-    # density
-    # ρ = kρ*cp.density(ev.params.density, h)
-    # if typeof(ρ) != typeof(h)
-    #     @show typeof(ρ)
-    #     @show typeof(h)
-    #     @info "error 1"
-    #     error()
-    # end
     ρ = kρ*cp.density_spline(ev.params.dsp, h)
-    # ρ = densisty_solin
-    # if typeof(ρ) != typeof(ρ2)
-    #     @show typeof(h)
-    #     @show typeof(ρ)
-    #     @show typeof(ρ2)
-    #     @info "error 2"
-    #     error()
-    # end
-    # @show typeof(ρ)
-    # @show eltype(r)
-    # @show eltype(v)
 
     # lift and drag magnitudes
     L, D = cp.LD_mags(ev.params.aero,ρ,r,v)
@@ -248,7 +226,6 @@ function mpc_quad(params::NamedTuple,X,U; verbose = true, atol = 1e-6)
     # cost function terms
     P = spzeros(nz,nz)
     q = zeros(nz)
-    R = 0.01
     for i = 1:(N-1)
         P[idx_u[i],idx_u[i]] = params.R
         q[idx_u[i]] = params.R*(U[i] - params.u_desired)
@@ -281,8 +258,8 @@ function mpc_quad(params::NamedTuple,X,U; verbose = true, atol = 1e-6)
     return (U + δu), qp_iters
 end
 
-function fix_control_size(U_in,N)
-    U = [SA[0.0,2.0] for i = 1:(N-1)]
+function fix_control_size(params,U_in,N)
+    U = [SA[0.0,params.dt_nominal] for i = 1:(N-1)]
     for i = 1 : min(N - 1, length(U_in))
         U[i] = U_in[i]
     end
@@ -297,6 +274,19 @@ function rollout(params::NamedTuple,x0,U)
     end
     return X
 end
+function rollout_to_altitude(params::NamedTuple,x0,U)
+    N = length(U) + 1
+    X = [deepcopy(x0) for i = 1:N]
+    N_mpc = 0
+    for i = 1:N-1
+        X[i+1] = discrete_dynamics(params,X[i],U[i],i)
+        if alt_from_x(ev,X[i+1][1:3]) < alt_from_x(ev,params.xg[1:3])
+            N_mpc = i
+            break
+        end
+    end
+    return X[1:N_mpc]
+end
 let
 
     # let's run some MPC
@@ -309,7 +299,7 @@ let
     ev.params.aero.m = 2400.0                # kg
 
     # sim stuff
-    ev.dt = 2.0 # seconds
+    ev.dt = NaN # seconds
 
     # CPEG settings
     ev.scale.uscale = 1e1
@@ -336,6 +326,7 @@ let
     x_max = [1e3*ones(6);   pi]
     δx_min = [-1e3*ones(6); -deg2rad(20)]
     δx_max = [1e3*ones(6);   deg2rad(20)]
+    dt_nominal = 2.0
     params = (altitudes = altitudes, densities = densities, Ewind = Ewind, Nwind = Nwind,
         nx = nx,
         nu = nu,
@@ -351,16 +342,17 @@ let
         δx_min = δx_min,
         δx_max = δx_max,
         x_desired = xg,
-        u_desired = [0, 2.0],
+        u_desired = [0, dt_nominal],
         ev = ev,
-        reg = 1e-4
+        reg = 1e-4,
+        dt_nominal = dt_nominal
     );
 
     # initial control
     N_mpc = 125
-    U = [SA[0,0.0] for i = 1:N_mpc-1]
+    U = [[0,0.0] for i = 1:N_mpc-1]
     for i = 1:N_mpc-1
-        U[i] = SA[.0001*randn();1.8]
+        U[i] = [.0001*randn();0.9*params.dt_nominal]
     end
 
 
@@ -396,14 +388,14 @@ let
         if length(U) > 0
             dts = [U[i][2] for i = 1:length(U)]
             tf = sum(dts)
-            N_mpc = Int(ceil((tf)/2.0))
+            N_mpc = Int(ceil((tf)/params.dt_nominal))
         end
 
         if N_mpc < 3
             @info "CPEG is off"
         else
             # adjust control if mismatch with N_mpc
-            U = fix_control_size(U,N_mpc)
+            U = fix_control_size(params,U,N_mpc)
 
             # do rollout
             X = rollout(params,Xsim[i+1],U)
@@ -477,15 +469,15 @@ let
     # # hold off
     # # "
     # #
-    # mat"
-    # figure
-    # hold on
-    # plot($t_vec1,rad2deg($σ1))
-    # title('Bank Angle')
-    # ylabel('Bank Angle (degrees)')
-    # xlabel('Time (s)')
-    # hold off
-    # "
+    mat"
+    figure
+    hold on
+    plot($t_vec1,rad2deg($σ1))
+    title('Bank Angle')
+    ylabel('Bank Angle (degrees)')
+    xlabel('Time (s)')
+    hold off
+    "
     # mat"
     # figure
     # hold on
