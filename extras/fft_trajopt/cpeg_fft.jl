@@ -88,8 +88,10 @@ function mpc_quad1(params::NamedTuple, A,B,X,U; verbose = true, atol = 1e-6, con
     q[idx_x[N]] = params.Qf*(X[N] - params.Xref[N])
 
     # TODO: maybe regularize
+    P += params.reg*I
 
     # solve the equality only constrained QP
+    # sol = lu([P A_eq';A_eq -params.reg*I(N*nx)])\[-q;b_eq]
     sol = lu([P A_eq';A_eq spzeros(N*nx,N*nx)])\[-q;b_eq]
     z = sol[1:length(q)]
     qp_iters = 1
@@ -182,30 +184,11 @@ function rk4_fudge(
 end
 
 function discrete_dynamics(p::NamedTuple,x,u,k)
-    # x1 = x[p.idx_x[1]]
-    # u1 = u[p.idx_u[1]]
-    # x2 = x[p.idx_x[2]]
-    # u2 = u[p.idx_u[2]]
-    # x3 = x[p.idx_x[3]]
-    # u3 = u[p.idx_u[3]]
-
-    # [
     rk4_fudge(p.ev,SVector{7}(x),SA[u[1]],u[2]/p.ev.scale.tscale, 1.0);
-    # rk4_fudge(p.ev,SVector{7}(x2),SA[u2[1]],u2[2]/p.ev.scale.tscale, p.kρ_2);
-    # rk4_fudge(p.ev,SVector{7}(x3),SA[u3[1]],u3[2]/p.ev.scale.tscale, p.kρ_3);
-    # ]
 end
-
-# function discrete_dynamics(p::NamedTuple,x,u,k)
-#     dt = u[2]
-#     cp.rk4(p.ev,SVector{7}(x),SA[u[1]],dt/p.ev.scale.tscale)
-# end
 
 function jacobs(params::NamedTuple,X,U)
     N = length(X)
-    # A = [ForwardDiff.jacobian(_x->rk4(p.ev,SVector{7}(_x),  SA[U[i][1]],U[i][2]/p.ev.scale.tscale), X[i]) for i = 1:N-1]
-    # B = [ForwardDiff.jacobian(_u->rk4(p.ev,SVector{7}(X[i]),SA[_u[1]],    _u[2]/p.ev.scale.tscale), U[i]) for i = 1:N-1]
-    # A,B
     A = [FD.jacobian(_x -> discrete_dynamics(params,_x,U[k],k),X[k]) for k = 1:N-1]
     B = [FD.jacobian(_u -> discrete_dynamics(params,X[k],_u,k),U[k]) for k = 1:N-1]
     A,B
@@ -284,7 +267,8 @@ let
         Xref = Xref,
         Uref = Uref,
         dt = dt,
-        ev = ev
+        ev = ev,
+        reg = 1e-4
     );
 
 
@@ -305,7 +289,7 @@ let
         A,B = jacobs(params,X,U)
 
         # solve MPC
-        δu, qp_iters = mpc_quad1(params, A,B,X,U; verbose = false, atol = 1e-10, constrain = constrain)
+        δu, qp_iters = mpc_quad1(params, A,B,X,U; verbose = true, atol = 1e-10, constrain = constrain)
         md = norm(X[N][1:3] - xg[1:3])*ev.scale.dscale/1000
         # if md < 5
         #     @info "constrained"
