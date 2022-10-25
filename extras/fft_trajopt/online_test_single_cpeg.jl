@@ -365,67 +365,86 @@ let
 
 
     # main sim
-    T = 15
-    dt = 1.0
+    T = 150
+    dt = 2.0
     Xsim = [zeros(7) for i = 1:T]
     Xsim[1] = x0_scaled
-    Usim = [zeros(2) for i = 1:T]
+    Usim = [zeros(2) for i = 1:T-1]
 
 
     for i = 1:T-1
-        Usim[i] = U[1][1:2] # pull just the bank angle and dt
+        if length(U) == 0
+            Usim[i] = 1*Usim[i-1]
+        else
+            Usim[i] = [U[1][1]; dt] # pull just the bank angle and dt
+        end
         # Xsim[i+1] = rk4_fudge_mg(ev,SVector{7}(Xsim[i]),SA[Usim[i][1]],Usim[i][2]/ev.scale.tscale, params)
         Xsim[i+1] = rk4_fudge_mg(ev,SVector{7}(Xsim[i]),SA[Usim[i][1]],dt/ev.scale.tscale, params)
 
+        # check sim termination
+        if alt_from_x(ev,Xsim[i+1]) < alt_from_x(ev,xg[1:3])
+            @info "SIM IS DONE"
+            Xsim = Xsim[1:(i+1)]
+            Usim = Usim[1:i]
+            break
+        end
+
         # remove that control
-        # U = [U[i] for i = 2:length(U)]
+        U = [U[i] for i = 2:length(U)]
 
         # get number of timesteps
-        dts = [U[i][2] for i = 1:length(U)]
-        tf = sum(dts)
-        N_mpc = Int(ceil((tf - dt)/2.0))
+        if length(U) > 0
+            dts = [U[i][2] for i = 1:length(U)]
+            tf = sum(dts)
+            N_mpc = Int(ceil((tf)/2.0))
+        end
 
-        # adjust control if mismatch with N_mpc
-        U = fix_control_size(U,N_mpc)
+        if N_mpc < 3
+            @info "CPEG is off"
+        else
+            # adjust control if mismatch with N_mpc
+            U = fix_control_size(U,N_mpc)
 
-        # do rollout
-        X = rollout(params,Xsim[i+1],U)
+            # do rollout
+            X = rollout(params,Xsim[i+1],U)
 
-        # CPEG
-        U, qp_iters = mpc_quad(params,X,U; verbose = false, atol = 1e-6)
+            # CPEG
+            U, qp_iters = mpc_quad(params,X,U; verbose = false, atol = 1e-6)
 
-        @show qp_iters
+            @show i, qp_iters
+        end
+
 
     end
 
     # Usim = [[Usim[i];dt] for i = 1:(length(Usim))]
-    # alt1, dr1, cr1, σ1, dt1, t_vec1, r1, v1 = process_ev_run(ev,Xsim,Usim)
+    alt1, dr1, cr1, σ1, dt1, t_vec1, r1, v1 = process_ev_run(ev,Xsim,Usim)
     # # alt2, dr2, cr2, σ2, dt2, t_vec2, r2, v2 = process_ev_run(ev,X2,U2)
     # # alt3, dr3, cr3, σ3, dt3, t_vec3, r3, v3 = process_ev_run(ev,X3,U3)
     #
     # # get the goals
-    # Xg = [SA[3.34795153940262, 0.6269403895311674, 0.008024160056155994, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]]
-    # alt_g, dr_g, cr_g = cp.postprocess_scaled(ev,Xg,Xsim[1])
+    Xg = [3.34795153940262, 0.6269403895311674, 0.008024160056155994, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]
+    alt_g, dr_g, cr_g = cp.postprocess_scaled(ev,[SVector{7}(Xg)],SVector{7}(Xsim[1]))
     #
-    # mat"
-    # figure
-    # hold on
-    # plot($dr1/1000,$cr1/1000)
-    # plot($dr_g(1)/1000, $cr_g(1)/1000,'ro')
-    # xlabel('downrange (km)')
-    # ylabel('crossrange (km)')
-    # hold off
-    # "
-    # #
-    # mat"
-    # figure
-    # hold on
-    # plot($dr1/1000,$alt1/1000)
-    # plot($dr_g(1)/1000, $alt_g(1)/1000, 'ro')
-    # xlabel('downrange (km)')
-    # ylabel('altitude (km)')
-    # hold off
-    # "
+    mat"
+    figure
+    hold on
+    plot($dr1/1000,$cr1/1000)
+    plot($dr_g(1)/1000, $cr_g(1)/1000,'ro')
+    xlabel('downrange (km)')
+    ylabel('crossrange (km)')
+    hold off
+    "
+    #
+    mat"
+    figure
+    hold on
+    plot($dr1/1000,$alt1/1000)
+    plot($dr_g(1)/1000, $alt_g(1)/1000, 'ro')
+    xlabel('downrange (km)')
+    ylabel('altitude (km)')
+    hold off
+    "
     #
     # v1s = [norm(v1[i]) for i = 1:length(v1)]
     # # v2s = [norm(v2[i]) for i = 1:N]
