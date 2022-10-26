@@ -10,10 +10,11 @@ using StatsBase
 
 Random.seed!(1234)
 
+estimate_wind = 0 
+
 # df = CSV.File("/home/josephine/.julia/dev/CPEG/src/MarsGramDataset/all/out1.csv")
-df = CSV.File("/Users/Josephine/.julia/dev/CPEG/src/MarsGramDataset/all/out1.csv")
-# print(df)
-# print(size(df)[1])
+df = CSV.File("/Users/Josephine/.julia/dev/CPEG/src/MarsGramDataset/MonteCarlo/out3.csv")
+
 ρ_real = zeros(size(df))
 alt_real = zeros(size(df))
 NW_real = zeros(size(df))
@@ -23,9 +24,7 @@ for (index, row) in enumerate(df)
     alt_real[index] = row.HgtMOLA
     NW_real[index] = row.NWind#NWTot
     EW_real[index] = row.EWind#EWTot
-    # println("values: $(row.HgtMOLA), $(row.Denkgm3), $(row.DensP)")
 end
-# print(ρ_real)
 
 ev = CPEG.CPEGWorkspace()
 
@@ -37,21 +36,23 @@ V0 = 5.845e3 #Mars-relative velocity at interface of 5.845 km/sec
 γ0 = -15.474*(pi/180.0) #Flight path angle at interface
 v0 = V0*SA[sin(γ0), cos(γ0), 0.0]
 σ0 = deg2rad(42)
-kρ = 0.0
-kew = 0.5
-knw = 0.5
 idx_trn = 1
 
 # ev.scale.dscale = 1.0
 # ev.scale.tscale = 1.0
 # ev.scale.uscale = 1.0
-x0 = [r0/ev.scale.dscale;v0/(ev.scale.dscale/ev.scale.tscale); σ0;kρ;kew;knw]
+if estimate_wind == 0
+    x0 = [r0/ev.scale.dscale;v0/(ev.scale.dscale/ev.scale.tscale); σ0;0]
+    state_number = 8
+else
+    x0 = [r0/ev.scale.dscale;v0/(ev.scale.dscale/ev.scale.tscale); σ0;0;0;0]
+    state_number = 10
+end
 
 # first rollout
 dt = 0.1/ev.scale.tscale# 1/3600/ev.scale.tscale
 N = 4000
 t_vec = (0:dt:((N-1)*dt))#*3600
-print(t_vec)
 Y = [zeros(7) for i = 1:N]
 
 X = [@SVector zeros(length(x0)) for i = 1:N]
@@ -59,20 +60,21 @@ U = [@SVector zeros(1) for i = 1:N]
 
 X[1] = deepcopy(x0)
 μ = deepcopy(X)
-μ[1] = [μ[1][1:7]; μ[1][8] + 0.1*randn(); μ[1][9] + 0.1*randn(); μ[1][10] + 0.1*randn()]
 F = [zeros(10,10) for i = 1:N]
-Σ = (0.01*Matrix(float(I(10))))
+Σ = (0.01*Matrix(float(I(state_number))))
 Σ[8,8] = (0.05)^2
-Σ[9,9] = (.3)^2
-Σ[10,10] = (.3)^2
-F[1] = CPEG.chol(Matrix(Σ))
-σ = deepcopy(F)
 σm_ρ = zeros(N)
 σm_ρ[1] = Σ[8,8]^0.5
-σm_ew = zeros(N)
-σm_ew[1] = Σ[9,9]^0.5
-σm_nw = zeros(N)
-σm_nw[1] = Σ[10,10]^0.5
+if estimate_wind == 1
+    Σ[9,9] = (.05)^2
+    Σ[10,10] = (.05)^2
+    σm_ew = zeros(N)
+    σm_ew[1] = Σ[9,9]^0.5
+    σm_nw = zeros(N)
+    σm_nw[1] = Σ[10,10]^0.5
+end
+F[1] = CPEG.chol(Matrix(Σ))
+σ = deepcopy(F)
 
 # initialize density, winds
 ρ_spline = zeros(N)
@@ -82,17 +84,18 @@ NW_interp = zeros(N)
 EW_spline = zeros(N)
 EW_interp = zeros(N)
 
-breaks_wind = sort([10:5:35; 37:2.:50; 51:1.:121],rev=true)
-breaks_ρ = sort([10:5:60; 62:2.:70; 71:1.:121],rev=true)
-
-# breaks_wind = sort(10:110:120,rev=true)
-# breaks_ρ = sort(10:110:120,rev=true)
-
-index_breakwind_previous = findlast(x->x>=h0*1e-3+1, breaks_wind)
-index_breakρ_previous = findlast(x->x>=h0*1e-3+1, breaks_ρ)
+kρ = zeros(N)
+kew = zeros(N)
+knw = zeros(N)
 
 
-Q = diagm( [(1e-0)^2*ones(3)/ev.scale.dscale; .005^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-10)^2;(1e-10)^2;(1e-10)^2;(1e-10)^2])
+if estimate_wind == 0
+    Q = diagm( [(5e-2)^2*ones(3)/ev.scale.dscale; .0001^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-10)^2;(1e-10)^2])
+else
+    Q = diagm( [(5e-2)^2*ones(3)/ev.scale.dscale; .0001^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-10)^2;(1e-10)^2;(1e-4)^2;(1e-4)^2])
+    # Q = diagm( [(5e-1)^2*ones(3)/ev.scale.dscale; .001^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-10)^2;(1e-10)^2;(1e-6)^2;(1e-6)^2])
+end
+#Q = diagm( [(5e-1)^2*ones(3)/ev.scale.dscale; .001^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-10)^2;(1e-10)^2;(1e-6)^2;(1e-6)^2])
 R = diagm( 10*[(.1)^2*ones(3)/ev.scale.dscale; (0.0002)^2*ones(3)/(ev.scale.dscale/ev.scale.tscale);1e-10])
 #Q = diagm( [(.005)^2*ones(3)/ev.scale.dscale; .005^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-3)^2;(1e-3)^2])
 #R = diagm( [(.1)^2*ones(3)/ev.scale.dscale; (0.0002)^2*ones(3)/(ev.scale.dscale/ev.scale.tscale);1e-10])
@@ -104,20 +107,17 @@ end_idx = NaN
 index_alt = NaN
 for i = 1:(N-1)
     U[i] = [cos(i/10)/30]
-    # U[i] = [pi/2]
 
     ## real density for each time step
     alt = CPEG.postprocess_es(model,[X[i]],x0)[1][1]
     ρ_spline[i] = CPEG.density_spline(model.params.density, alt[1]) # this not necessary, only to keep track of modellization
     EW_spline[i],NW_spline[i] = CPEG.eswind_spline(model.params.density, alt[1])[1:3] # this not necessary, only to keep track of modellization
-    # println("EW ", EW_spline[i], " NW ", NW_spline[i])
+
     #find \rho_real
     global index_alt
     for (index,h) in enumerate(alt_real)
-        # println("h ",h," alt",alt)
         if h <= alt*1e-3
             index_alt = index
-            # println("index ",index_alt," h", h," alt",alt)
             break
         end
     end
@@ -126,48 +126,51 @@ for i = 1:(N-1)
     NW_interp[i] = x_interp* (NW_real[index_alt]-NW_real[index_alt-1]) + NW_real[index_alt-1] # this is the true value taken from Mars Sample
     EW_interp[i] = x_interp* (EW_real[index_alt]-EW_real[index_alt-1]) + EW_real[index_alt-1] # this is the true value taken from Mars Sample
 
-    index_breakwind = findlast(x->x>=alt*1e-3, breaks_wind)
-    index_breakρ = findlast(x->x>=alt*1e-3, breaks_ρ)
-    global index_breakwind_previous, index_breakρ_previous, kρ, kew, knw
-    if index_breakwind > index_breakwind_previous
-        println(i)
-        println("wind ", alt)
-        knw = sin(NW_interp[i]/NW_spline[i])
-        println("NW_interp ",NW_interp[i], "NW_spline ", NW_spline[i]," knw ",knw)
-        kew = sin(EW_interp[i]/EW_spline[i])
+    # define correction factors
+    global kρ, kew, knw
+    knw[i] = sin(NW_interp[i]/NW_spline[i])
+    kew[i] = sin(EW_interp[i]/EW_spline[i])
+    kρ[i] = (ρ_interp[i]/ρ_spline[i])-1
+    # exponential moving average
+    α = 0.03 # if just initialize set this to 0 or close to 0
+    if estimate_wind == 1
         if i == 1
-            X[i] = [X[i][1:8];kew;knw]
+            X[i] = [X[i][1:7];kρ[i];kew[i];knw[i]]
+        else
+            X[i] = [X[i][1:7];(1-α)*X[i][8]+(α)*kρ[i];(1-α)*X[i][9]+(α)*kew[i];(1-α)*X[i][10]+(α)*knw[i]]
         end
-        index_breakwind_previous = index_breakwind
+    else
+        if i == 1
+            X[i] = [X[i][1:7];kρ[i]]
+        else
+            X[i] = [X[i][1:7];(1-α)*X[i][8]+(α)*kρ[i]]
+        end
     end
 
-    if index_breakρ > index_breakρ_previous
-        println("rho ", alt)
-        kρ = (ρ_interp[i]/ρ_spline[i])-1
-        if i == 1
-            X[i] = [X[i][1:7];kρ;X[i][9:10]]
-        end
-        index_breakρ_previous = index_breakρ
-    end
-    # if i ==1 # just initialize
-    #     kρ = (ρ_interp[i]/ρ_spline[i])-1
-    #     knw = (NW_interp[i]/NW_spline[i])-1
-    #     kew = (EW_interp[i]/EW_spline[i])-1
-    #     global kρ, knw, kew
-    #     # print()
-    #     X[i] = [X[i][1:7];kρ;kew;knw]
-    # end
-    # # println("x_interp ",  x_interp, "alt ", alt, "alt_real1 ", alt_real[index_alt-1], "alt_real2 ", alt_real[index_alt])
+
     if i == 1
-        μ[1] = [μ[1][1:7]; kρ + 0.1*randn(); kew + 0.1*randn(); knw + 0.1*randn()]
+        if estimate_wind == 0
+            μ[1] = [μ[1][1:7]; kρ[i] + 0.1*randn()]
+        else
+            μ[1] = [μ[1][1:7]; kρ[i] + 0.1*randn(); kew[i] + 0.1*randn(); knw[i] + 0.1*randn()]
+        end
     end
-    X[i+1] = CPEG.rk4_est(model,X[i],U[i],dt)
-    Y[i+1] = CPEG.measurement(model,X[i+1]) + kf_sys.ΓR*randn(7)
-    μ[i+1], F[i+1] = CPEG.sqrkalman_filter(model, μ[i],F[i],U[i],Y[i+1],kf_sys)
+    if estimate_wind == 0
+        X[i+1] = CPEG.rk4_est(model,X[i],U[i],dt)
+        Y[i+1] = CPEG.measurement(model,X[i+1]) + kf_sys.ΓR*randn(7)
+        μ[i+1], F[i+1] = CPEG.sqrkalman_filter(model, μ[i],F[i],U[i],Y[i+1],kf_sys)
+    else
+        X[i+1] = CPEG.rk4_est_wind(model,X[i],U[i],dt)
+        Y[i+1] = CPEG.measurement_wind(model,X[i+1]) + kf_sys.ΓR*randn(7)
+        μ[i+1], F[i+1] = CPEG.sqrkalman_filter_wind(model, μ[i],F[i],U[i],Y[i+1],kf_sys)
+    end
+
     σ[i+1] = F[i+1]'*F[i+1]
     σm_ρ[i+1] = sqrt(σ[i+1][8,8])
-    σm_ew[i+1] = sqrt(σ[i+1][9,9])
-    σm_nw[i+1] = sqrt(σ[i+1][10,10])
+    if estimate_wind ==1
+        σm_ew[i+1] = sqrt(σ[i+1][9,9])
+        σm_nw[i+1] = sqrt(σ[i+1][10,10])
+    end
     #break if altitude less than 10 km
     x = deepcopy(X[i+1])
     r = CPEG.unscale_rv(ev.scale,x[SA[1,2,3]],x[SA[4,5,6]])[1]
@@ -176,19 +179,17 @@ for i = 1:(N-1)
     if i%1000== 1
         println("alt ",alt," - lat ",lat," - lon ",lon)
     end
-    # println(alt, i)
+
     global idx_trn
     idx_trn += 1
     if alt <= 1e4
         alt = CPEG.postprocess_es(model,[X[i+1]],x0)[1]
         ρ_spline[i+1] = CPEG.density_spline(model.params.density, alt[1])
-        # println("alt ",alt," - lat ",lat," - lon ",lon)
         break
     end
 end
 # exit()
 # truncate results
-println(μ[1],X[1])
 t_vec = (0:dt:((idx_trn-1)*dt))*ev.scale.tscale#*3600
 X  = X[1:idx_trn]
 U = U[1:idx_trn]
@@ -196,14 +197,19 @@ Y = Y[1:idx_trn]
 μ = μ[1:idx_trn]
 F = F[1:idx_trn]
 σm_ρ = σm_ρ[1:idx_trn]
-σm_ew = σm_ew[1:idx_trn]
-σm_nw = σm_ew[1:idx_trn]
+if estimate_wind ==1
+    σm_ew = σm_ew[1:idx_trn]
+    σm_nw = σm_ew[1:idx_trn]
+end
 ρ_spline = ρ_spline[1:idx_trn]
 ρ_interp = ρ_interp[1:idx_trn]
 NW_spline = NW_spline[1:idx_trn]
 NW_interp = NW_interp[1:idx_trn]
 EW_spline = EW_spline[1:idx_trn]
 EW_interp = EW_interp[1:idx_trn]
+kρ = kρ[1:idx_trn]
+kew = kew[1:idx_trn]
+knw = knw[1:idx_trn]
 N = idx_trn
 
 # println(X)
@@ -339,28 +345,16 @@ saveas(gcf,'plots/verr.png')
 # exit()
 μm = mat_from_vec(μ)
 
-# println("rho_spline ", ρ_spline," mu", (1 .+ μm[8,:]'))
-
-# println(ρ_est)
-# exit()
-# print(μm[8,:])
-# σm = zeros(length(μ))
-# # @infiltrate
-# # error()
-# for i = 1:length(μ)
-#     Σ = F[i]'*F[i]
-#     σm = sqrt(Σ[8,8])
-# end
-# print(3*σm)
 mat"
 figure
 hold on
 p1 = plot($alt_k/1e3,$μm(8,:)','b');
 p2= plot($alt_k/1e3,$μm(8,:)' + 3*$σm_ρ,'r--');
 plot($alt_k/1e3,$μm(8,:)' - 3*$σm_ρ,'r--')
-p3 = plot($alt/1e3,$Xm(8,:)','color',[0.9290, 0.6940, 0.1250]);
+p3 = plot($alt/1e3,$kρ','color',[0.9290, 0.6940, 0.1250]);
+p4 = plot($alt/1e3,$Xm(8,:)','color','k');
 title('Atmospheric Correction Factor')
-legend([p1;p2;p3],'SREKF krho','3 sigma bounds','True krho','location','southeast')
+legend([p1;p2;p3;p4],'SREKF krho','3 sigma bounds','True krho','Exp. Moving Average','location','southeast')
 xlabel('Altitude, km')
 ylabel('k rho')
 %ylim([0.7 0.82])
@@ -376,9 +370,10 @@ hold on
 p1 = plot($t_vec,$μm(8,:)','b');
 p2= plot($t_vec,$μm(8,:)' + 3*$σm_ρ,'r--');
 plot($t_vec,$μm(8,:)' - 3*$σm_ρ,'r--')
-p3 = plot($t_vec,$Xm(8,:)','color',[0.9290, 0.6940, 0.1250]);
+p3 = plot($t_vec,$kρ,'color',[0.9290, 0.6940, 0.1250]);
+p4 = plot($t_vec,$Xm(8,:)','color','k');
 title('Atmospheric Correction Factor')
-legend([p1;p2;p3],'SREKF krho','3 sigma bounds','True krho','location','southeast')
+legend([p1;p2;p3;p4],'SREKF krho','3 sigma bounds','True krho','Exp. Moving Average','location','southeast')
 xlabel('Time, s')
 ylabel('k rho')
 %ylim([0.7 0.82])
@@ -395,21 +390,23 @@ saveas(gcf,'plots/krhotime.png')
 ρ_est_min = [ρ_spline[i]*(1+(μm[8,i]'-3*σm_ρ[i])) for i in range(1,length(ρ_spline))]
 L2_ρ = L2dist(ρ_interp, ρ_est)
 
-NW_est = zeros(length(NW_spline))
-NW_est_max = zeros(length(NW_spline))
-NW_est_min = zeros(length(NW_spline))
-NW_est = [NW_spline[i]*(μm[10,i]') for i in range(1,length(NW_spline))]
-NW_est_max = [NW_spline[i]*((μm[10,i]'+3*σm_nw[i])) for i in range(1,length(NW_spline))]
-NW_est_min = [NW_spline[i]*((μm[10,i]'-3*σm_nw[i])) for i in range(1,length(NW_spline))]
-L2_NW = L2dist(NW_interp, NW_est)
+if estimate_wind == 1
+    NW_est = zeros(length(NW_spline))
+    NW_est_max = zeros(length(NW_spline))
+    NW_est_min = zeros(length(NW_spline))
+    NW_est = [NW_spline[i]*(μm[10,i]') for i in range(1,length(NW_spline))]
+    NW_est_max = [NW_spline[i]*((μm[10,i]'+3*σm_nw[i])) for i in range(1,length(NW_spline))]
+    NW_est_min = [NW_spline[i]*((μm[10,i]'-3*σm_nw[i])) for i in range(1,length(NW_spline))]
+    L2_NW = L2dist(NW_interp, NW_est)
 
-EW_est = zeros(length(EW_spline))
-EW_est_max = zeros(length(EW_spline))
-EW_est_min = zeros(length(EW_spline))
-EW_est = [EW_spline[i]*(μm[9,i]') for i in range(1,length(EW_spline))]
-EW_est_max = [EW_spline[i]*((μm[9,i]'+3*σm_ew[i])) for i in range(1,length(EW_spline))]
-EW_est_min = [EW_spline[i]*((μm[9,i]'-3*σm_ew[i])) for i in range(1,length(EW_spline))]
-L2_EW = L2dist(EW_interp, EW_est)
+    EW_est = zeros(length(EW_spline))
+    EW_est_max = zeros(length(EW_spline))
+    EW_est_min = zeros(length(EW_spline))
+    EW_est = [EW_spline[i]*(μm[9,i]') for i in range(1,length(EW_spline))]
+    EW_est_max = [EW_spline[i]*((μm[9,i]'+3*σm_ew[i])) for i in range(1,length(EW_spline))]
+    EW_est_min = [EW_spline[i]*((μm[9,i]'-3*σm_ew[i])) for i in range(1,length(EW_spline))]
+    L2_EW = L2dist(EW_interp, EW_est)
+end
 mat"
 figure
 hold on
@@ -447,152 +444,157 @@ set(gca,'FontSize',14)
 %saveas(gcf,'plots/rhotime.eps','epsc')
 saveas(gcf,'plots/rhotime.png')
 "
+if estimate_wind == 1
+    mat"
+    figure
+    hold on
+    p1 = plot($alt_k/1e3,$μm(9,:)','b');
+    p2= plot($alt_k/1e3,$μm(9,:)' + 3*$σm_ew,'r--');
+    plot($alt_k/1e3,$μm(9,:)' - 3*$σm_ew,'r--')
+    p3 = plot($alt/1e3,$kew,'color',[0.9290, 0.6940, 0.1250]);
+    p4 = plot($alt/1e3,$Xm(9,:)','color','k');
+    title('East Wind Correction Factor')
+    legend([p1;p2;p3;p4],'SREKF kwE','3 sigma bounds','True kwE','Exp. Moving Average','location','southeast')
+    xlabel('Altitude, km')
+    ylabel('k East Wind')
+    % ylim([-1.0 1.0])
+    hold off
+    set(gca,'FontSize',14)
+    %saveas(gcf,'plots/keW.eps','epsc')
+    saveas(gcf,'plots/keW.png')
+    "
 
-mat"
-figure
-hold on
-p1 = plot($alt_k/1e3,$μm(9,:)','b');
-p2= plot($alt_k/1e3,$μm(9,:)' + 3*$σm_ew,'r--');
-plot($alt_k/1e3,$μm(9,:)' - 3*$σm_ew,'r--')
-p3 = plot($alt/1e3,$Xm(9,:)','color',[0.9290, 0.6940, 0.1250]);
-title('East Wind Correction Factor')
-legend([p1;p2;p3],'SREKF kwE','3 sigma bounds','True kwE','location','southeast')
-xlabel('Altitude, km')
-ylabel('k East Wind')
-% ylim([-1.0 1.0])
-hold off
-set(gca,'FontSize',14)
-%saveas(gcf,'plots/keW.eps','epsc')
-saveas(gcf,'plots/keW.png')
-"
+    mat"
+    figure
+    hold on
+    p1 = plot($t_vec,$μm(9,:)','b');
+    p2= plot($t_vec,$μm(9,:)' + 3*$σm_ew,'r--');
+    plot($t_vec,$μm(9,:)' - 3*$σm_ew,'r--')
+    p3 = plot($t_vec,$kew,'color',[0.9290, 0.6940, 0.1250]);
+    p4 = plot($t_vec,$Xm(9,:)','color','k');
+    title('East Wind Correction Factor')
+    legend([p1;p2;p3;p4],'SREKF kwE','3 sigma bounds','True kwE','Exp. Moving Average','location','southeast')
+    xlabel('Time, s')
+    ylabel('k East Wind')
+    % ylim([-1.0 1.0])
+    hold off
+    set(gca,'FontSize',14)
+    %saveas(gcf,'plots/keWtime.eps','epsc')
+    saveas(gcf,'plots/keWtime.png')
+    "
 
-mat"
-figure
-hold on
-p1 = plot($t_vec,$μm(9,:)','b');
-p2= plot($t_vec,$μm(9,:)' + 3*$σm_ew,'r--');
-plot($t_vec,$μm(9,:)' - 3*$σm_ew,'r--')
-p3 = plot($t_vec,$Xm(9,:)','color',[0.9290, 0.6940, 0.1250]);
-title('East Wind Correction Factor')
-legend([p1;p2;p3],'SREKF kwE','3 sigma bounds','True kwE','location','southeast')
-xlabel('Time, s')
-ylabel('k East Wind')
-% ylim([-1.0 1.0])
-hold off
-set(gca,'FontSize',14)
-%saveas(gcf,'plots/keWtime.eps','epsc')
-saveas(gcf,'plots/keWtime.png')
-"
+    mat"
+    figure
+    hold on
+    p1 = plot($alt_k(1:end-1)/1e3,$EW_est(1:end-1),'b');
+    p2= plot($alt_k(1:end-1)/1e3,$EW_est_max(1:end-1),'r--');
+    plot($alt_k(1:end-1)/1e3,$EW_est_min(1:end-1),'r--')
+    p3 = plot($alt/1e3,$EW_interp,'color',[0.9290, 0.6940, 0.1250]);
+    title(['East Wind - L2 Distance - ', num2str($L2_EW)])
+    legend([p1;p2;p3],'SREKF EW','3 sigma bounds','True EW','location','southeast')
+    xlabel('Altitude, km')
+    ylabel('East Wind, m/s')
+    ylim([-100 100])
+    %set(gca, 'YScale', 'log')
+    hold off
+    set(gca,'FontSize',14)
+    %saveas(gcf,'plots/ew.eps','epsc')
+    saveas(gcf,'plots/ew.png')
+    "
 
-mat"
-figure
-hold on
-p1 = plot($alt_k(1:end-1)/1e3,$EW_est(1:end-1),'b');
-p2= plot($alt_k(1:end-1)/1e3,$EW_est_max(1:end-1),'r--');
-plot($alt_k(1:end-1)/1e3,$EW_est_min(1:end-1),'r--')
-p3 = plot($alt/1e3,$EW_interp,'color',[0.9290, 0.6940, 0.1250]);
-title(['East Wind - L2 Distance - ', num2str($L2_EW)])
-legend([p1;p2;p3],'SREKF EW','3 sigma bounds','True EW','location','southeast')
-xlabel('Altitude, km')
-ylabel('East Wind, m/s')
-ylim([-100 100])
-%set(gca, 'YScale', 'log')
-hold off
-set(gca,'FontSize',14)
-%saveas(gcf,'plots/ew.eps','epsc')
-saveas(gcf,'plots/ew.png')
-"
+    mat"
+    figure
+    hold on
+    p1 = plot($t_vec(1:end-1),$EW_est(1:end-1),'b');
+    p2= plot($t_vec(1:end-1),$EW_est_max(1:end-1),'r--');
+    plot($t_vec(1:end-1),$EW_est_min(1:end-1),'r--')
+    p3 = plot($t_vec,$EW_interp','color',[0.9290, 0.6940, 0.1250]);
+    title(['East Wind - L2 Distance - ', num2str($L2_EW)])
+    legend([p1;p2;p3],'SREKF EW','3 sigma bounds','True EW','location','southeast')
+    xlabel('Time, s')
+    ylabel('EW, kg/m^2')
+    ylim([-100 100])
+    %set(gca, 'YScale', 'log')
+    hold off
+    set(gca,'FontSize',14)
+    %saveas(gcf,'plots/ewtime.eps','epsc')
+    saveas(gcf,'plots/ewtime.png')
+    "
 
-mat"
-figure
-hold on
-p1 = plot($t_vec(1:end-1),$EW_est(1:end-1),'b');
-p2= plot($t_vec(1:end-1),$EW_est_max(1:end-1),'r--');
-plot($t_vec(1:end-1),$EW_est_min(1:end-1),'r--')
-p3 = plot($t_vec,$EW_interp','color',[0.9290, 0.6940, 0.1250]);
-title(['East Wind - L2 Distance - ', num2str($L2_EW)])
-legend([p1;p2;p3],'SREKF EW','3 sigma bounds','True EW','location','southeast')
-xlabel('Time, s')
-ylabel('EW, kg/m^2')
-ylim([-100 100])
-%set(gca, 'YScale', 'log')
-hold off
-set(gca,'FontSize',14)
-%saveas(gcf,'plots/ewtime.eps','epsc')
-saveas(gcf,'plots/ewtime.png')
-"
+    mat"
+    figure
+    hold on
+    p1 = plot($alt_k/1e3,$μm(10,:)','b');
+    p2= plot($alt_k/1e3,$μm(10,:)' + 3*$σm_nw,'r--');
+    plot($alt_k/1e3,$μm(10,:)' - 3*$σm_nw,'r--')
+    p3 = plot($alt/1e3,$knw,'color',[0.9290, 0.6940, 0.1250]);
+    p4 = plot($alt/1e3,$Xm(10,:)','color','k');
+    title('North Wind Correction Factor')
+    legend([p1;p2;p3;p4],'SREKF kwN','3 sigma bounds','True kwN','Exp. Moving Average','location','southeast')
+    xlabel('Altitude, km')
+    ylabel('k North Wind')
+    % ylim([-1.0 1.0])
+    hold off
+    set(gca,'FontSize',14)
+    %saveas(gcf,'plots/knW.eps','epsc')
+    saveas(gcf,'plots/knW.png')
+    "
 
-mat"
-figure
-hold on
-p1 = plot($alt_k/1e3,$μm(10,:)','b');
-p2= plot($alt_k/1e3,$μm(10,:)' + 3*$σm_nw,'r--');
-plot($alt_k/1e3,$μm(10,:)' - 3*$σm_nw,'r--')
-p3 = plot($alt/1e3,$Xm(10,:)','color',[0.9290, 0.6940, 0.1250]);
-title('North Wind Correction Factor')
-legend([p1;p2;p3],'SREKF kwN','3 sigma bounds','True kwN','location','southeast')
-xlabel('Altitude, km')
-ylabel('k North Wind')
-% ylim([-1.0 1.0])
-hold off
-set(gca,'FontSize',14)
-%saveas(gcf,'plots/knW.eps','epsc')
-saveas(gcf,'plots/knW.png')
-"
+    mat"
+    figure
+    hold on
+    p1 = plot($t_vec,$μm(10,:)','b');
+    p2= plot($t_vec,$μm(10,:)' + 3*$σm_nw,'r--');
+    plot($t_vec,$μm(10,:)' - 3*$σm_nw,'r--')
+    p3 = plot($t_vec,$knw,'color',[0.9290, 0.6940, 0.1250]);
+    p4 = plot($t_vec,$Xm(10,:)','color','k');
+    title('North Wind Correction Factor')
+    legend([p1;p2;p3;p4],'SREKF kwN','3 sigma bounds','True kwN','Exp. Moving Average','location','southeast')
+    xlabel('Time, s')
+    ylabel('k North Wind')
+    % ylim([-1.0 1.0])
+    hold off
+    set(gca,'FontSize',14)
+    %saveas(gcf,'plots/knWtime.eps','epsc')
+    saveas(gcf,'plots/knWtime.png')
+    "
 
-mat"
-figure
-hold on
-p1 = plot($t_vec,$μm(10,:)','b');
-p2= plot($t_vec,$μm(10,:)' + 3*$σm_nw,'r--');
-plot($t_vec,$μm(10,:)' - 3*$σm_nw,'r--')
-p3 = plot($t_vec,$Xm(10,:)','color',[0.9290, 0.6940, 0.1250]);
-title('North Wind Correction Factor')
-legend([p1;p2;p3],'SREKF kwN','3 sigma bounds','True kwN','location','southeast')
-xlabel('Time, s')
-ylabel('k North Wind')
-% ylim([-1.0 1.0])
-hold off
-set(gca,'FontSize',14)
-%saveas(gcf,'plots/knWtime.eps','epsc')
-saveas(gcf,'plots/knWtime.png')
-"
+    mat"
+    figure
+    hold on
+    p1 = plot($alt_k(1:end-1)/1e3,$NW_est(1:end-1),'b');
+    p2= plot($alt_k(1:end-1)/1e3,$NW_est_max(1:end-1),'r--');
+    plot($alt_k(1:end-1)/1e3,$NW_est_min(1:end-1),'r--')
+    p3 = plot($alt/1e3,$NW_interp,'color',[0.9290, 0.6940, 0.1250]);
+    title(['North Wind - L2 Distance - ', num2str($L2_NW)])
+    legend([p1;p2;p3],'SREKF NW','3 sigma bounds','True NW','location','southeast')
+    xlabel('Altitude, km')
+    ylabel('North Wind, m/s')
+    ylim([-100 100])
+    %set(gca, 'YScale', 'log')
+    hold off
+    set(gca,'FontSize',14)
+    %saveas(gcf,'plots/nw.eps','epsc')
+    saveas(gcf,'plots/nw.png')
+    "
 
-mat"
-figure
-hold on
-p1 = plot($alt_k(1:end-1)/1e3,$NW_est(1:end-1),'b');
-p2= plot($alt_k(1:end-1)/1e3,$NW_est_max(1:end-1),'r--');
-plot($alt_k(1:end-1)/1e3,$NW_est_min(1:end-1),'r--')
-p3 = plot($alt/1e3,$NW_interp,'color',[0.9290, 0.6940, 0.1250]);
-title(['North Wind - L2 Distance - ', num2str($L2_NW)])
-legend([p1;p2;p3],'SREKF NW','3 sigma bounds','True NW','location','southeast')
-xlabel('Altitude, km')
-ylabel('North Wind, m/s')
-ylim([-100 100])
-%set(gca, 'YScale', 'log')
-hold off
-set(gca,'FontSize',14)
-%saveas(gcf,'plots/nw.eps','epsc')
-saveas(gcf,'plots/nw.png')
-"
-
-mat"
-figure
-hold on
-p1 = plot($t_vec(1:end-1),$NW_est(1:end-1),'b');
-p2= plot($t_vec(1:end-1),$NW_est_max(1:end-1),'r--');
-plot($t_vec(1:end-1),$NW_est_min(1:end-1),'r--')
-p3 = plot($t_vec,$NW_interp','color',[0.9290, 0.6940, 0.1250]);
-title(['North Wind - L2 Distance - ', num2str($L2_NW)])
-legend([p1;p2;p3],'SREKF NW','3 sigma bounds','True NW','location','southeast')
-xlabel('Time, s')
-ylabel('NW, kg/m^2')
-ylim([-100 100])
-%set(gca, 'YScale', 'log')
-hold off
-set(gca,'FontSize',14)
-%saveas(gcf,'plots/nwtime.eps','epsc')
-saveas(gcf,'plots/nwtime.png')
-"
+    mat"
+    figure
+    hold on
+    p1 = plot($t_vec(1:end-1),$NW_est(1:end-1),'b');
+    p2= plot($t_vec(1:end-1),$NW_est_max(1:end-1),'r--');
+    plot($t_vec(1:end-1),$NW_est_min(1:end-1),'r--')
+    p3 = plot($t_vec,$NW_interp','color',[0.9290, 0.6940, 0.1250]);
+    title(['North Wind - L2 Distance - ', num2str($L2_NW)])
+    legend([p1;p2;p3],'SREKF NW','3 sigma bounds','True NW','location','southeast')
+    xlabel('Time, s')
+    ylabel('NW, kg/m^2')
+    ylim([-100 100])
+    %set(gca, 'YScale', 'log')
+    hold off
+    set(gca,'FontSize',14)
+    %saveas(gcf,'plots/nwtime.eps','epsc')
+    saveas(gcf,'plots/nwtime.png')
+    "
+end
 # @test a1 ≈ (a1_central + a1_j2) rtol = 1e-12
