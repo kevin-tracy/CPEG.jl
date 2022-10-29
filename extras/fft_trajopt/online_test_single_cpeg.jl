@@ -106,6 +106,8 @@ function dynamics_fudge(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}, 
 
     # altitude
     h,_,_ = cp.altitude(ev.params.gravity, r)
+    # @show h
+    # @show cp.density_spline(ev.params.dsp, h)
     ρ = kρ*cp.density_spline(ev.params.dsp, h)
 
     # lift and drag magnitudes
@@ -277,15 +279,16 @@ end
 function rollout_to_altitude(params::NamedTuple,x0,U)
     N = length(U) + 1
     X = [deepcopy(x0) for i = 1:N]
-    N_mpc = 0
     for i = 1:N-1
+        # @show i
+        # @show X[i]
         X[i+1] = discrete_dynamics(params,X[i],U[i],i)
-        if alt_from_x(ev,X[i+1][1:3]) < alt_from_x(ev,params.xg[1:3])
-            N_mpc = i
-            break
+        # error()
+        if alt_from_x(params.ev,X[i+1][1:3]) < alt_from_x(params.ev,params.x_desired[1:3])
+            return i
         end
     end
-    return X[1:N_mpc]
+    error("didn't reach altitude mark for some reason")
 end
 let
 
@@ -349,28 +352,60 @@ let
     );
 
     # initial control
-    N_mpc = 125
+    N_mpc = 250
     U = [[0,0.0] for i = 1:N_mpc-1]
     for i = 1:N_mpc-1
         U[i] = [.0001*randn();0.9*params.dt_nominal]
     end
+    N_mpc = rollout_to_altitude(params,x0_scaled,U)
+    # @show N_mpc
+    # error()
+    U = U[1:N_mpc]
 
 
     # main sim
-    T = 150
-    dt = 2.0
+    T = 500
+    dt = 0.2
     Xsim = [zeros(7) for i = 1:T]
     Xsim[1] = x0_scaled
     Usim = [zeros(2) for i = 1:T-1]
 
 
+    @info "starting sim"
+    terminal = false
     for i = 1:T-1
-        if length(U) == 0
-            Usim[i] = 1*Usim[i-1]
+
+        if !terminal
+            # ----------------MPC-----------------------
+            # get N_mpc
+            dts = [U[i][2] for i = 1:length(U)]
+            tf = sum(dts)
+            N_mpc = Int(ceil((tf)/params.dt_nominal))
+            if N_mpc < 10
+                terminal = true
+                break
+            end
+
+            # adjust control if mismatch with N_mpc
+            U = fix_control_size(params,U,N_mpc)
+
+            # do rollout
+            X = rollout(params,Xsim[i],U)
+
         else
-            Usim[i] = [U[1][1]; dt] # pull just the bank angle and dt
+            @info "reached terminal status"
+            break
         end
-        # Xsim[i+1] = rk4_fudge_mg(ev,SVector{7}(Xsim[i]),SA[Usim[i][1]],Usim[i][2]/ev.scale.tscale, params)
+
+
+        # CPEG
+        U, qp_iters = mpc_quad(params,X,U; verbose = false, atol = 1e-6)
+
+        @show i, qp_iters
+        # ----------------MPC-----------------------
+
+        # sim
+        Usim[i] = [U[1][1]; dt]
         Xsim[i+1] = rk4_fudge_mg(ev,SVector{7}(Xsim[i]),SA[Usim[i][1]],dt/ev.scale.tscale, params)
 
         # check sim termination
@@ -380,32 +415,6 @@ let
             Usim = Usim[1:i]
             break
         end
-
-        # remove that control
-        U = [U[i] for i = 2:length(U)]
-
-        # get number of timesteps
-        if length(U) > 0
-            dts = [U[i][2] for i = 1:length(U)]
-            tf = sum(dts)
-            N_mpc = Int(ceil((tf)/params.dt_nominal))
-        end
-
-        if N_mpc < 3
-            @info "CPEG is off"
-        else
-            # adjust control if mismatch with N_mpc
-            U = fix_control_size(params,U,N_mpc)
-
-            # do rollout
-            X = rollout(params,Xsim[i+1],U)
-
-            # CPEG
-            U, qp_iters = mpc_quad(params,X,U; verbose = false, atol = 1e-6)
-
-            @show i, qp_iters
-        end
-
 
     end
 

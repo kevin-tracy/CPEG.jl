@@ -330,6 +330,7 @@ function density_spline(dsp::density_spline_parameters, h::T) where T
             return ρ
         end
     end
+    error("unable to return density")
 end
 
 
