@@ -31,6 +31,7 @@ function alt_from_x(ev::cp.CPEGWorkspace, x)
     v_scaled = SA[2,3,4.0]
     r, v = cp.unscale_rv(ev.scale,r_scaled,v_scaled)
     h,_,_ = cp.altitude(ev.params.gravity, r)
+    h
 end
 
 function dynamics_fudge_mg(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}, params::NamedTuple) where {T,W}
@@ -290,6 +291,20 @@ function rollout_to_altitude(params::NamedTuple,x0,U)
     end
     error("didn't reach altitude mark for some reason")
 end
+
+function downsample_controls(U, dt_terminal)
+    sigma_dot = [U[i][1] for i = 1:length(U)]
+    dts = [U[i][2] for i = 1:length(U)]
+    tf = sum(dts)
+    t_vec = [0;cumsum(dts)]
+    t_vec = t_vec[1:end-1]
+    dts_terminal = 0:dt_terminal:floor(tf)
+    mat"$sigma_dots = spline($t_vec,$sigma_dot, $dts_terminal);"
+
+    U_terminal = [[sigma_dots[i]; dt_terminal] for i = 1:length(dts_terminal)]
+end
+
+
 let
 
     # let's run some MPC
@@ -351,6 +366,29 @@ let
         dt_nominal = dt_nominal
     );
 
+    # TODO: make a controller struct for both, things, include all logic in the control functions
+
+    params_terminal = (altitudes = altitudes, densities = densities, Ewind = Ewind, Nwind = Nwind,
+        nx = nx,
+        nu = nu,
+        Q = Q,
+        R = R,
+        Qf = Qf,
+        u_min = [-100, .01],
+        u_max =  [100, 1.0],
+        x_min = x_min,
+        x_max = x_max,
+        δu_min = δu_min,
+        δu_max = δu_max,
+        δx_min = δx_min,
+        δx_max = δx_max,
+        x_desired = xg,
+        u_desired = [0, 0.2],
+        ev = ev,
+        reg = 1e-4,
+        dt_nominal = 0.2
+    );
+
     # initial control
     N_mpc = 250
     U = [[0,0.0] for i = 1:N_mpc-1]
@@ -358,13 +396,11 @@ let
         U[i] = [.0001*randn();0.9*params.dt_nominal]
     end
     N_mpc = rollout_to_altitude(params,x0_scaled,U)
-    # @show N_mpc
-    # error()
     U = U[1:N_mpc]
 
 
     # main sim
-    T = 500
+    T = 3000
     dt = 0.2
     Xsim = [zeros(7) for i = 1:T]
     Xsim[1] = x0_scaled
@@ -373,6 +409,7 @@ let
 
     @info "starting sim"
     terminal = false
+    made_the_switch = false
     for i = 1:T-1
 
         if !terminal
@@ -381,31 +418,53 @@ let
             dts = [U[i][2] for i = 1:length(U)]
             tf = sum(dts)
             N_mpc = Int(ceil((tf)/params.dt_nominal))
-            if N_mpc < 10
+            if N_mpc < 20
+                @info "set terminal flag"
                 terminal = true
-                break
+                # U = downsample_controls(U, dt_terminal)
             end
-
-            # adjust control if mismatch with N_mpc
-            U = fix_control_size(params,U,N_mpc)
-
-            # do rollout
-            X = rollout(params,Xsim[i],U)
 
         else
             @info "reached terminal status"
-            break
+            if !made_the_switch
+                @info "made the switch and downsampled controls"
+                params = params_terminal
+                U = downsample_controls(U, params.dt_nominal)
+                made_the_switch = true
+            end
+            dts = [U[i][2] for i = 1:length(U)]
+            tf = sum(dts)
+            N_mpc = Int(ceil((tf)/params.dt_nominal))
+
         end
 
 
         # CPEG
-        U, qp_iters = mpc_quad(params,X,U; verbose = false, atol = 1e-6)
+        # adjust control if mismatch with N_mpc
+        U = fix_control_size(params,U,N_mpc)
 
-        @show i, qp_iters
+        # do rollout
+        X = rollout(params,Xsim[i],U)
+        if terminal
+            # @show X
+            # @show U
+            # @show params.dt_nominal
+            U, qp_iters = mpc_quad(params,X,U; verbose = true, atol = 1e-6)
+        else
+            U, qp_iters = mpc_quad(params,X,U; verbose = false, atol = 1e-6)
+        end
+
+        alt = alt_from_x(params.ev, Xsim[i])/1000
+        @show i, qp_iters, alt, N_mpc
         # ----------------MPC-----------------------
 
         # sim
-        Usim[i] = [U[1][1]; dt]
+        if length(U) == 0
+            @info "success (i guess)"
+            break
+        else
+            Usim[i] = [U[1][1]; dt]
+        end
         Xsim[i+1] = rk4_fudge_mg(ev,SVector{7}(Xsim[i]),SA[Usim[i][1]],dt/ev.scale.tscale, params)
 
         # check sim termination
