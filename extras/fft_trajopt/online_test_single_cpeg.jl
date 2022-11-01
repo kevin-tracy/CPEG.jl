@@ -35,7 +35,7 @@ function alt_from_x(ev::cp.CPEGWorkspace, x)
     h
 end
 
-function dynamics_fudge_mg(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}, params::NamedTuple) where {T,W}
+function dynamics_fudge_mg(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}, params) where {T,W}
 
     # scaled variables
     r_scaled = x[SA[1,2,3]]
@@ -91,7 +91,7 @@ function rk4_fudge_mg(
     ev::cp.CPEGWorkspace,
     x_n::SVector{7,T},
     u::SVector{1,W},
-    dt_s::T2, params::NamedTuple) where {T,W,T2}
+    dt_s::T2, params) where {T,W,T2}
 
     k1 = dt_s*dynamics_fudge_mg(ev,x_n,u,params)
     k2 = dt_s*dynamics_fudge_mg(ev,x_n+k1/2,u,params)
@@ -154,7 +154,7 @@ function rk4_fudge(
     return (x_n + (1/6)*(k1 + 2*k2 + 2*k3 + k4))
 end
 
-function discrete_dynamics(p::NamedTuple,x1,u1,k)
+function discrete_dynamics(p,x1,u1,k)
     rk4_fudge(p.ev,SVector{7}(x1),SA[u1[1]],u1[2]/p.ev.scale.tscale, 1.0);
 end
 
@@ -179,13 +179,13 @@ function process_ev_run(ev,X,U)
 
     return alt, dr, cr, σ, dt, t_vec, r, v
 end
-function jacobs(params::NamedTuple,X,U)
+function jacobs(params,X,U)
     N = length(X)
     A = [FD.jacobian(_x -> discrete_dynamics(params,_x,U[k],k),X[k]) for k = 1:N-1]
     B = [FD.jacobian(_u -> discrete_dynamics(params,X[k],_u,k),U[k]) for k = 1:N-1]
     A,B
 end
-function mpc_quad(params::NamedTuple,X,U; verbose = true, atol = 1e-6)
+function mpc_quad(params,X,U; verbose = true, atol = 1e-6)
 
     @assert length(X) == (length(U) + 1)
     A,B = jacobs(params,X,U)
@@ -268,14 +268,14 @@ function mpc_quad(params::NamedTuple,X,U; verbose = true, atol = 1e-6)
 end
 
 function fix_control_size(params,U_in,N)
-    U = [SA[0.0,params.dt_nominal] for i = 1:(N-1)]
+    U = [SA[0.0,params.u_desired[2]] for i = 1:(N-1)]
     for i = 1 : min(N - 1, length(U_in))
         U[i] = U_in[i]
     end
     return U
 end
 
-function rollout(params::NamedTuple,x0,U)
+function rollout(params,x0,U)
     N = length(U) + 1
     X = [deepcopy(x0) for i = 1:N]
     for i = 1:N-1
@@ -283,7 +283,7 @@ function rollout(params::NamedTuple,x0,U)
     end
     return X
 end
-function rollout_to_altitude(params::NamedTuple,x0,U)
+function rollout_to_altitude(params,x0,U)
     N = length(U) + 1
     X = [deepcopy(x0) for i = 1:N]
     for i = 1:N-1
@@ -311,6 +311,34 @@ function downsample_controls(U, dt_terminal)
 end
 
 
+mutable struct Params{Tf,Ti}
+    ρ_spline::Spline1D
+    wE_spline::Spline1D
+    wN_spline::Spline1D
+    nx::Ti
+    nu::Ti
+    Q::Diagonal{Tf, Vector{Tf}}
+    R::Diagonal{Tf, Vector{Tf}}
+    Qf::Diagonal{Tf, Vector{Tf}}
+    u_min::Vector{Tf}
+    u_max::Vector{Tf}
+    x_min::Vector{Tf}
+    x_max::Vector{Tf}
+    δu_min::Vector{Tf}
+    δu_max::Vector{Tf}
+    δx_min::Vector{Tf}
+    δx_max::Vector{Tf}
+    x_desired::Vector{Tf}
+    u_desired::Vector{Tf}
+    ev::cp.CPEGWorkspace
+    reg::Tf
+    X::Vector{Vector{Tf}}
+    U::Vector{Vector{Tf}}
+    state::Symbol
+    states_visited::Dict{Symbol, Bool}
+    N_mpc::Ti
+end
+
 let
 
     # let's run some MPC
@@ -335,14 +363,14 @@ let
     altitudes,densities, Ewind, Nwind = load_atmo()
     nx = 7
     nu = 2
-    Q = Diagonal([0,0,0,0,0,0,1e-4])
-    Qf = 1e8*Diagonal([1,1,1,0,0,0,1e-4])
-    R = Diagonal([1,100])
+    Q = Diagonal([0,0,0,0,0,0.0,1e-4])
+    Qf = 1e8*Diagonal([1.0,1,1,0,0,0,1e-4])
+    R = Diagonal([1,100.0])
     xg = [3.34795153940262, 0.6269403895311674, 0.008024160056155994, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]
 
 
     u_min = [-100, .5]
-    u_max =  [100, 4]
+    u_max =  [100, 4.0]
     δu_min = [-100,-.2]
     δu_max = [100, 0.2]
 
@@ -350,132 +378,113 @@ let
     x_max = [1e3*ones(6);   pi]
     δx_min = [-1e3*ones(6); -deg2rad(20)]
     δx_max = [1e3*ones(6);   deg2rad(20)]
-    dt_nominal = 2.0
+    x_desired = xg
+    u_desired = [0; 2.0]
 
     ρ_spline = Spline1D(reverse(altitudes), reverse(densities))
     wE_spline = Spline1D(reverse(altitudes), reverse(Ewind))
     wN_spline = Spline1D(reverse(altitudes), reverse(Nwind))
-    params = (ρ_spline=ρ_spline, wE_spline=wE_spline,wN_spline = wN_spline, altitudes = altitudes, densities = densities, Ewind = Ewind, Nwind = Nwind,
-        nx = nx,
-        nu = nu,
-        Q = Q,
-        R = R,
-        Qf = Qf,
-        u_min = u_min,
-        u_max = u_max,
-        x_min = x_min,
-        x_max = x_max,
-        δu_min = δu_min,
-        δu_max = δu_max,
-        δx_min = δx_min,
-        δx_max = δx_max,
-        x_desired = xg,
-        u_desired = [0, dt_nominal],
-        ev = ev,
-        reg = 1e-4,
-        dt_nominal = dt_nominal
-    );
+    reg = 1e-4
+    X = [zeros(nx) for i = 1:10]
+    U =[zeros(nu) for i = 1:10]
+    # states :nominal :terminal :coast
+    params = Params(
+                    ρ_spline,
+                    wE_spline,
+                    wN_spline,
+                    nx,nu,
+                    Q,R,Qf,
+                    u_min,u_max,x_min,x_max,
+                    δu_min, δu_max,δx_min,δx_max,
+                    x_desired, u_desired,
+                    ev, reg, X, U,
+                    :nominal,
+                    Dict(:nominal => true, :terminal => false, :coast => false),
+                    10)
 
-    # TODO: make a controller struct for both, things, include all logic in the control functions
-
-    params_terminal = (ρ_spline=ρ_spline, wE_spline=wE_spline,wN_spline = wN_spline, altitudes = altitudes, densities = densities, Ewind = Ewind, Nwind = Nwind,
-        nx = nx,
-        nu = nu,
-        Q = Q,
-        R = R,
-        Qf = Qf,
-        u_min = [-100, .01],
-        u_max =  [100, 1.0],
-        x_min = x_min,
-        x_max = x_max,
-        δu_min = δu_min,
-        δu_max = δu_max,
-        δx_min = δx_min,
-        δx_max = δx_max,
-        x_desired = xg,
-        u_desired = [0, 0.2],
-        ev = ev,
-        reg = 1e-4,
-        dt_nominal = 0.2
-    );
 
     # initial control
-    N_mpc = 250
-    U = [[0,0.0] for i = 1:N_mpc-1]
-    for i = 1:N_mpc-1
-        U[i] = [.0001*randn();0.9*params.dt_nominal]
+    params.N_mpc = 250
+    params.U = [[0,0.0] for i = 1:params.N_mpc-1]
+    for i = 1:params.N_mpc-1
+        params.U[i] = [.0001*randn();0.9*params.u_desired[2]]
     end
-    N_mpc = rollout_to_altitude(params,x0_scaled,U)
-    U = U[1:N_mpc]
+    params.N_mpc = rollout_to_altitude(params,x0_scaled,params.U)
+    params.U = params.U[1:params.N_mpc]
 
 
     # main sim
     T = 3000
-    dt = 0.2
+    sim_dt = 0.2
     Xsim = [zeros(7) for i = 1:T]
     Xsim[1] = x0_scaled
     Usim = [zeros(2) for i = 1:T-1]
 
 
     @info "starting sim"
-    terminal = false
-    made_the_switch = false
     for i = 1:T-1
 
-        if !terminal
+        if params.state == :nominal
+        # if !terminal
             # ----------------MPC-----------------------
             # get N_mpc
-            dts = [U[i][2] for i = 1:length(U)]
+            dts = [params.U[i][2] for i = 1:length(params.U)]
             tf = sum(dts)
-            N_mpc = Int(ceil((tf)/params.dt_nominal))
-            if N_mpc < 20
+            params.N_mpc = Int(ceil((tf)/params.u_desired[2]))
+            if params.N_mpc < 20
                 @info "set terminal flag"
-                terminal = true
+                # terminal = true
+                params.state = :terminal
                 # U = downsample_controls(U, dt_terminal)
             end
-
-        else
+        end
+        if params.state == :terminal
             @info "reached terminal status"
-            if !made_the_switch
+            # if !made_the_switch
+            if !params.states_visited[:terminal]
                 @info "made the switch and downsampled controls"
-                params = params_terminal
-                U = downsample_controls(U, params.dt_nominal)
-                made_the_switch = true
-            end
-            dts = [U[i][2] for i = 1:length(U)]
-            tf = sum(dts)
-            N_mpc = Int(ceil((tf)/params.dt_nominal))
+                # params = params_terminal
+                params.u_min[2] = 0.01
+                params.u_desired[2] = 0.2
 
+                params.U = downsample_controls(params.U, params.u_desired[2])
+                params.states_visited[:terminal] = :true
+            end
+            dts = [params.U[i][2] for i = 1:length(params.U)]
+            tf = sum(dts)
+            params.N_mpc = Int(ceil((tf)/params.u_desired[2]))
         end
 
 
-        # CPEG
-        # adjust control if mismatch with N_mpc
-        U = fix_control_size(params,U,N_mpc)
+        if params.state != :coast
+            # CPEG
+            # adjust control if mismatch with N_mpc
+            params.U = fix_control_size(params,params.U,params.N_mpc)
 
-        # do rollout
-        X = rollout(params,Xsim[i],U)
+            # do rollout
+            params.X = rollout(params,Xsim[i],params.U)
 
-        # if terminal
-            # U, qp_iters = mpc_quad(params,X,U; verbose = true, atol = 1e-6)
-        # else
-            U, qp_iters = mpc_quad(params,X,U; verbose = false, atol = 1e-6)
-        # end
+            params.U, qp_iters = mpc_quad(params,params.X,params.U; verbose = false, atol = 1e-6)
+        end
 
         alt = alt_from_x(params.ev, Xsim[i])/1000
-        md = params.ev.scale.dscale*norm(X[end][1:3] - params.x_desired[1:3])/1e3
-        @show i, qp_iters, alt, N_mpc, md
+        # md = params.ev.scale.dscale*norm(X[end][1:3] - params.x_desired[1:3])/1e3
+        # @show i, qp_iters, alt, N_mpc, md
+        @show i, alt
         # ----------------MPC-----------------------
 
         # sim
-        if length(U) == 0
+        if (params.state == :coast) || (length(params.U) == 0)
+            params.state = :coast
             @info "control is off"
-            # Usim[i] = [0;dt]
-            break
-        else
-            Usim[i] = [U[1][1]; dt]
+            Usim[i] = [Usim[i-1][1];sim_dt]
+        else # if we are in nominal or terminal
+            Usim[i] = [params.U[1][1]; sim_dt]
         end
-        Xsim[i+1] = rk4_fudge_mg(ev,SVector{7}(Xsim[i]),SA[Usim[i][1]],dt/ev.scale.tscale, params)
+
+
+
+        Xsim[i+1] = rk4_fudge_mg(ev,SVector{7}(Xsim[i]),SA[Usim[i][1]],sim_dt/ev.scale.tscale, params)
 
         # check sim termination
         if alt_from_x(ev,Xsim[i+1]) < alt_from_x(ev,xg[1:3])
