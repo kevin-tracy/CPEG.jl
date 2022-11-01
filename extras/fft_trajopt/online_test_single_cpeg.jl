@@ -14,6 +14,7 @@ using Printf
 using MATLAB
 import Random
 using DelimitedFiles
+using Dierckx
 
 Random.seed!(1)
 
@@ -51,10 +52,15 @@ function dynamics_fudge_mg(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W
     uD,uN,uE = cp.latlongtoNED(lat, lon)
     # density
     # ρ = kρ*cp.density(ev.params.density, h)
-    mat"$ρ = spline($params.altitudes,$params.densities, $h);"
-    mat"$wE = spline($params.altitudes,$params.Ewind, $h);"
-    mat"$wN = spline($params.altitudes,$params.Nwind, $h);"
-
+    # mat"$ρ = spline($params.altitudes,$params.densities, $h);"
+    # mat"$wE = spline($params.altitudes,$params.Ewind, $h);"
+    # mat"$wN = spline($params.altitudes,$params.Nwind, $h);"
+    # @show h
+    ρ = params.ρ_spline(h)
+    wE = params.wE_spline(h)
+    wN = params.wN_spline(h)
+    # @show "oops"
+#
     wind_pp = wN * uN + wE * uE #- wU * uD  # wind velocity in pp frame , m / s
     v_rw = v + wind_pp  # relative wind vector , m / s # if wind == 0, the velocity = v
 
@@ -345,7 +351,11 @@ let
     δx_min = [-1e3*ones(6); -deg2rad(20)]
     δx_max = [1e3*ones(6);   deg2rad(20)]
     dt_nominal = 2.0
-    params = (altitudes = altitudes, densities = densities, Ewind = Ewind, Nwind = Nwind,
+
+    ρ_spline = Spline1D(reverse(altitudes), reverse(densities))
+    wE_spline = Spline1D(reverse(altitudes), reverse(Ewind))
+    wN_spline = Spline1D(reverse(altitudes), reverse(Nwind))
+    params = (ρ_spline=ρ_spline, wE_spline=wE_spline,wN_spline = wN_spline, altitudes = altitudes, densities = densities, Ewind = Ewind, Nwind = Nwind,
         nx = nx,
         nu = nu,
         Q = Q,
@@ -368,7 +378,7 @@ let
 
     # TODO: make a controller struct for both, things, include all logic in the control functions
 
-    params_terminal = (altitudes = altitudes, densities = densities, Ewind = Ewind, Nwind = Nwind,
+    params_terminal = (ρ_spline=ρ_spline, wE_spline=wE_spline,wN_spline = wN_spline, altitudes = altitudes, densities = densities, Ewind = Ewind, Nwind = Nwind,
         nx = nx,
         nu = nu,
         Q = Q,
