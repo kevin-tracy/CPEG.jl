@@ -22,8 +22,8 @@ function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/extras/fft_trajopt/a
     TT = readdlm(path, ',')
     alt = Vector{Float64}(TT[2:end,2])
     density = Vector{Float64}(TT[2:end,end])
-    Ewind = Vector{Float64}(TT[2:end,8])
-    Nwind = Vector{Float64}(TT[2:end,10])
+    Ewind = Vector{Float64}(TT[2:end,7])
+    Nwind = Vector{Float64}(TT[2:end,9])
     return alt*1000, density, Ewind, Nwind
 end
 
@@ -283,6 +283,24 @@ function rollout(params,x0,U)
     end
     return X
 end
+function rollout2(params,x0,U_in)
+    N2 = 10000
+    # N = length(U) + 1
+    U = [zeros(params.nu) for i = 1:(N2-1)]
+    X = [deepcopy(x0) for i = 1:N2]
+    for i = 1:10000
+        if i < length(U_in)
+            U[i] = 1*U_in[i]
+        else
+            U[i] = 1*params.u_desired
+        end
+        X[i+1] = discrete_dynamics(params,X[i],U[i],i)
+        if alt_from_x(params.ev,X[i+1][1:3]) < alt_from_x(params.ev,params.x_desired[1:3])
+            return X[1:(i+1)], U[1:i], (i+1)
+        end
+    end
+    error("rollout2 didn't hit alt target")
+end
 function rollout_to_altitude(params,x0,U)
     N = length(U) + 1
     X = [deepcopy(x0) for i = 1:N]
@@ -420,7 +438,7 @@ let
     Xsim[1] = x0_scaled
     Usim = [zeros(2) for i = 1:T-1]
 
-
+    qp_iters = -1
     @info "starting sim"
     for i = 1:T-1
 
@@ -432,19 +450,19 @@ let
             tf = sum(dts)
             params.N_mpc = Int(ceil((tf)/params.u_desired[2]))
             if params.N_mpc < 20
-                @info "set terminal flag"
+                # @info "set terminal flag"
                 # terminal = true
                 params.state = :terminal
                 # U = downsample_controls(U, dt_terminal)
             end
         end
         if params.state == :terminal
-            @info "reached terminal status"
+            # @info "reached terminal status"
             # if !made_the_switch
             if !params.states_visited[:terminal]
-                @info "made the switch and downsampled controls"
+                # @info "made the switch and downsampled controls"
                 # params = params_terminal
-                params.u_min[2] = 0.01
+                params.u_min[2] = 0.0001
                 params.u_desired[2] = 0.2
 
                 params.U = downsample_controls(params.U, params.u_desired[2])
@@ -462,15 +480,16 @@ let
             params.U = fix_control_size(params,params.U,params.N_mpc)
 
             # do rollout
-            params.X = rollout(params,Xsim[i],params.U)
+            # params.X = rollout(params,Xsim[i],params.U)
+            params.X, params.U, params.N_mpc = rollout2(params,Xsim[i],params.U)
 
             params.U, qp_iters = mpc_quad(params,params.X,params.U; verbose = false, atol = 1e-6)
         end
 
-        alt = alt_from_x(params.ev, Xsim[i])/1000
+
         # md = params.ev.scale.dscale*norm(X[end][1:3] - params.x_desired[1:3])/1e3
         # @show i, qp_iters, alt, N_mpc, md
-        @show i, alt
+        # @show i, alt
         # ----------------MPC-----------------------
 
         # sim
@@ -481,6 +500,18 @@ let
         else # if we are in nominal or terminal
             Usim[i] = [params.U[1][1]; sim_dt]
         end
+
+        if params.state != :coast
+            if rem(i-1,7)==0
+                @printf "iter    state     altitude    N_mpc     dt     qp_iter    miss\n"
+                @printf "-------------------------------------------------------------------\n"
+            end
+            alt = alt_from_x(params.ev, Xsim[i])/1000
+            md = params.ev.scale.dscale*norm(params.X[end][1:3] - params.x_desired[1:3])/1e3
+            @printf("%4d    %-7s   %6.2f      %3d      %5.2f  %3d       %6.2f\n",
+              i, String(params.state), alt, params.N_mpc, params.u_desired[2], qp_iters, md)
+        end
+
 
 
 
