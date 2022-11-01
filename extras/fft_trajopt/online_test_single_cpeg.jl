@@ -455,22 +455,22 @@ let
 
         # do rollout
         X = rollout(params,Xsim[i],U)
-        if terminal
-            # @show X
-            # @show U
-            # @show params.dt_nominal
-            U, qp_iters = mpc_quad(params,X,U; verbose = true, atol = 1e-6)
-        else
+
+        # if terminal
+            # U, qp_iters = mpc_quad(params,X,U; verbose = true, atol = 1e-6)
+        # else
             U, qp_iters = mpc_quad(params,X,U; verbose = false, atol = 1e-6)
-        end
+        # end
 
         alt = alt_from_x(params.ev, Xsim[i])/1000
-        @show i, qp_iters, alt, N_mpc
+        md = params.ev.scale.dscale*norm(X[end][1:3] - params.x_desired[1:3])/1e3
+        @show i, qp_iters, alt, N_mpc, md
         # ----------------MPC-----------------------
 
         # sim
         if length(U) == 0
-            @info "success (i guess)"
+            @info "control is off"
+            # Usim[i] = [0;dt]
             break
         else
             Usim[i] = [U[1][1]; dt]
