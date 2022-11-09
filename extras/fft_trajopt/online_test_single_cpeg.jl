@@ -19,7 +19,7 @@ using Dierckx
 Random.seed!(1)
 
 # function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/extras/fft_trajopt/atmo_samples/samp1.csv")
-function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/src/MarsGramDataset/MonteCarlo/out1.csv")
+function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/src/MarsGramDataset/all/out6.csv")
     TT = readdlm(path, ',')
     alt = Vector{Float64}(TT[2:end,2])
     density = Vector{Float64}(TT[2:end,end])
@@ -406,7 +406,7 @@ let
     ρ_spline = Spline1D(reverse(altitudes), reverse(densities))
     wE_spline = Spline1D(reverse(altitudes), reverse(Ewind))
     wN_spline = Spline1D(reverse(altitudes), reverse(Nwind))
-    reg = 1e-8
+    reg = 1e-4
     X = [zeros(nx) for i = 1:10]
     U =[zeros(nu) for i = 1:10]
     # states :nominal :terminal :coast
