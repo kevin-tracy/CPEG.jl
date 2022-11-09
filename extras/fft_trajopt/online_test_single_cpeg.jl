@@ -18,12 +18,13 @@ using Dierckx
 
 Random.seed!(1)
 
-function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/extras/fft_trajopt/atmo_samples/samp2.csv")
+# function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/extras/fft_trajopt/atmo_samples/samp1.csv")
+function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/src/MarsGramDataset/MonteCarlo/out1.csv")
     TT = readdlm(path, ',')
     alt = Vector{Float64}(TT[2:end,2])
     density = Vector{Float64}(TT[2:end,end])
-    Ewind = Vector{Float64}(TT[2:end,7])
-    Nwind = Vector{Float64}(TT[2:end,9])
+    Ewind = Vector{Float64}(TT[2:end,8])
+    Nwind = Vector{Float64}(TT[2:end,10])
     return alt*1000, density, Ewind, Nwind
 end
 
@@ -323,7 +324,9 @@ function downsample_controls(U, dt_terminal)
     t_vec = [0;cumsum(dts)]
     t_vec = t_vec[1:end-1]
     dts_terminal = 0:dt_terminal:floor(tf)
-    mat"$sigma_dots = spline($t_vec,$sigma_dot, $dts_terminal);"
+    # mat"$sigma_dots = spline($t_vec,$sigma_dot, $dts_terminal);"
+    spl = Spline1D(t_vec, sigma_dot)
+    sigma_dots = spl(dts_terminal)
 
     U_terminal = [[sigma_dots[i]; dt_terminal] for i = 1:length(dts_terminal)]
 end
@@ -402,7 +405,7 @@ let
     ρ_spline = Spline1D(reverse(altitudes), reverse(densities))
     wE_spline = Spline1D(reverse(altitudes), reverse(Ewind))
     wN_spline = Spline1D(reverse(altitudes), reverse(Nwind))
-    reg = 1e-4
+    reg = 0e-8
     X = [zeros(nx) for i = 1:10]
     U =[zeros(nu) for i = 1:10]
     # states :nominal :terminal :coast
@@ -449,7 +452,7 @@ let
             dts = [params.U[i][2] for i = 1:length(params.U)]
             tf = sum(dts)
             params.N_mpc = Int(ceil((tf)/params.u_desired[2]))
-            if params.N_mpc < 20
+            if params.N_mpc < 5
                 # @info "set terminal flag"
                 # terminal = true
                 params.state = :terminal
@@ -462,8 +465,9 @@ let
             if !params.states_visited[:terminal]
                 # @info "made the switch and downsampled controls"
                 # params = params_terminal
-                params.u_min[2] = 0.0001
+                params.u_min[2] = 0.1e-8
                 params.u_desired[2] = 0.2
+                params.Qf = params.Qf
 
                 params.U = downsample_controls(params.U, params.u_desired[2])
                 params.states_visited[:terminal] = :true
@@ -480,8 +484,8 @@ let
             params.U = fix_control_size(params,params.U,params.N_mpc)
 
             # do rollout
-            # params.X = rollout(params,Xsim[i],params.U)
-            params.X, params.U, params.N_mpc = rollout2(params,Xsim[i],params.U)
+            params.X = rollout(params,Xsim[i],params.U)
+            # params.X, params.U, params.N_mpc = rollout2(params,Xsim[i],params.U)
 
             params.U, qp_iters = mpc_quad(params,params.X,params.U; verbose = false, atol = 1e-6)
         end
@@ -495,23 +499,33 @@ let
         # sim
         if (params.state == :coast) || (length(params.U) == 0)
             params.state = :coast
-            @info "control is off"
-            Usim[i] = [Usim[i-1][1];sim_dt]
+            # Usim[i] = [Usim[i-1][1];sim_dt]
+            Usim[i] = [0;sim_dt]
         else # if we are in nominal or terminal
             Usim[i] = [params.U[1][1]; sim_dt]
         end
 
         if params.state != :coast
             if rem(i-1,7)==0
-                @printf "iter    state     altitude    N_mpc     dt     qp_iter    miss\n"
-                @printf "-------------------------------------------------------------------\n"
+                @printf "iter    state     altitude    N_mpc     dt     qp_iter    miss        d_left\n"
+                @printf "----------------------------------------------------------------------------\n"
             end
             alt = alt_from_x(params.ev, Xsim[i])/1000
             md = params.ev.scale.dscale*norm(params.X[end][1:3] - params.x_desired[1:3])/1e3
-            @printf("%4d    %-7s   %6.2f      %3d      %5.2f  %3d       %6.2f\n",
-              i, String(params.state), alt, params.N_mpc, params.u_desired[2], qp_iters, md)
+            d_left = params.ev.scale.dscale*norm(Xsim[i][1:3] - params.x_desired[1:3])/1e3
+            @printf("%4d    %-7s   %6.2f      %3d      %5.2f  %3d       %6.2f     %6.2f\n",
+              i, String(params.state), alt, params.N_mpc, params.u_desired[2], qp_iters, md, d_left)
+        else
+            if rem(i-1,7)==0
+                @printf "iter    state     altitude    N_mpc     dt     qp_iter    miss        d_left\n"
+                @printf "----------------------------------------------------------------------------\n"
+            end
+            alt = alt_from_x(params.ev, Xsim[i])/1000
+            md = NaN
+            d_left = params.ev.scale.dscale*norm(Xsim[i][1:3] - params.x_desired[1:3])/1e3
+            @printf("%4d    %-7s   %6.2f      %3d      %5.2f  %3d       %6.2f     %6.2f\n",
+              i, String(params.state), alt, NaN, NaN, NaN, NaN, d_left)
         end
-
 
 
 
