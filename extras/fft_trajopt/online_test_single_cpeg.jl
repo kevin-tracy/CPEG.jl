@@ -391,7 +391,7 @@ let
     xg = [3.34795153940262, 0.6269403895311674, 0.008024160056155994, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]
 
 
-    u_min = [-100, .5]
+    u_min = [-100, .1]
     u_max =  [100, 4.0]
     δu_min = [-100,-.2]
     δu_max = [100, 0.2]
@@ -401,7 +401,7 @@ let
     δx_min = [-1e3*ones(6); -deg2rad(20)]
     δx_max = [1e3*ones(6);   deg2rad(20)]
     x_desired = xg
-    u_desired = [0; 2.0]
+    u_desired = [0; 1.0]
 
     ρ_spline = Spline1D(reverse(altitudes), reverse(densities))
     wE_spline = Spline1D(reverse(altitudes), reverse(Ewind))
@@ -426,7 +426,7 @@ let
 
 
     # initial control
-    params.N_mpc = 250
+    params.N_mpc = 2000
     params.U = [[0,0.0] for i = 1:params.N_mpc-1]
     for i = 1:params.N_mpc-1
         params.U[i] = [.0001*randn();0.9*params.u_desired[2]]
@@ -437,7 +437,7 @@ let
 
     # main sim
     T = 3000
-    sim_dt = 0.2
+    sim_dt = 1.0
     Xsim = [zeros(7) for i = 1:T]
     Xsim[1] = x0_scaled
     Usim = [zeros(2) for i = 1:T-1]
@@ -466,9 +466,9 @@ let
             if !params.states_visited[:terminal]
                 # @info "made the switch and downsampled controls"
                 # params = params_terminal
-                params.u_min[2] = 0.1e-8
-                params.u_desired[2] = 0.2
-                params.Qf = params.Qf
+                # params.u_min[2] = 0.1e-8
+                # params.u_desired[2] = 0.2
+                # params.Qf = params.Qf
 
                 params.U = downsample_controls(params.U, params.u_desired[2])
                 params.states_visited[:terminal] = :true
