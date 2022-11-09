@@ -401,7 +401,7 @@ let
     δx_min = [-1e3*ones(6); -deg2rad(20)]
     δx_max = [1e3*ones(6);   deg2rad(20)]
     x_desired = xg
-    u_desired = [0; 1.0]
+    u_desired = [0; 2.0]
 
     ρ_spline = Spline1D(reverse(altitudes), reverse(densities))
     wE_spline = Spline1D(reverse(altitudes), reverse(Ewind))
@@ -453,7 +453,7 @@ let
             dts = [params.U[i][2] for i = 1:length(params.U)]
             tf = sum(dts)
             params.N_mpc = Int(ceil((tf)/params.u_desired[2]))
-            if params.N_mpc < 5
+            if params.N_mpc < 50
                 # @info "set terminal flag"
                 # terminal = true
                 params.state = :terminal
@@ -467,7 +467,7 @@ let
                 # @info "made the switch and downsampled controls"
                 # params = params_terminal
                 # params.u_min[2] = 0.1e-8
-                # params.u_desired[2] = 0.2
+                params.u_desired[2] = 1.0
                 # params.Qf = params.Qf
 
                 params.U = downsample_controls(params.U, params.u_desired[2])
