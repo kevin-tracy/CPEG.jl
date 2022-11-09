@@ -385,8 +385,9 @@ let
     nx = 7
     nu = 2
     Q = Diagonal([0,0,0,0,0,0.0,1e-4])
-    Qf = 1e8*Diagonal([1.0,1,1,0,0,0,1e-4])
-    R = Diagonal([1,100.0])
+    Qf = 1e8*Diagonal([1.0,1,1,0,0,0,1e-8])
+    Qf[7,7] = 1e-4
+    R = Diagonal([.1,10.0])
     xg = [3.34795153940262, 0.6269403895311674, 0.008024160056155994, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]
 
 
@@ -405,7 +406,7 @@ let
     ρ_spline = Spline1D(reverse(altitudes), reverse(densities))
     wE_spline = Spline1D(reverse(altitudes), reverse(Ewind))
     wN_spline = Spline1D(reverse(altitudes), reverse(Nwind))
-    reg = 0e-8
+    reg = 1e-8
     X = [zeros(nx) for i = 1:10]
     U =[zeros(nu) for i = 1:10]
     # states :nominal :terminal :coast
