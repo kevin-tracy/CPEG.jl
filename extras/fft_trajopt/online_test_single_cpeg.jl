@@ -18,8 +18,10 @@ using Dierckx
 
 Random.seed!(1)
 
+include("/Users/kevintracy/.julia/dev/CPEG/extras/fft_trajopt/geod_stuff.jl")
+
 # function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/extras/fft_trajopt/atmo_samples/samp1.csv")
-function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/src/MarsGramDataset/all/out6.csv")
+function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/src/MarsGramDataset/all/out8.csv")
     TT = readdlm(path, ',')
     alt = Vector{Float64}(TT[2:end,2])
     density = Vector{Float64}(TT[2:end,end])
@@ -214,6 +216,7 @@ function mpc_quad(params,X,U; verbose = true, atol = 1e-6)
     end
     A_eq[(N-1)*nx .+ (1:nx), idx_x[1]] = I(nx)
 
+
     # inequality constraints
     G = spzeros(2*(2*N - 1),nz)
     h = spzeros(2*(2*N - 1),nz)
@@ -248,18 +251,53 @@ function mpc_quad(params,X,U; verbose = true, atol = 1e-6)
     # TODO: maybe regularize
     P += params.reg*I
 
-    # solve the equality only constrained QP
-    # sol = lu([P A_eq';A_eq -params.reg*I(N*nx)])\[-q;b_eq]
-    sol = lu([P A_eq';A_eq spzeros(N*nx,N*nx)])\[-q;b_eq]
-    z = sol[1:length(q)]
-    qp_iters = 1
+    # # if params.constrain
+    # z = zeros(length(q))
+    # qp_iters = 0
+    # try
+    #     A_term = spzeros(3,nz)
+    #     A_term[:,idx_x[N][1:3]] = I(3)
+    #     b_term = params.x_desired[1:3] - X[N][1:3]
+    #     # @show "made it this far"
+    #     A_eq_c = [A_eq;A_term]
+    #     b_eq_c = [b_eq;b_term]
+    #     # @show "made it this far"
+    #
+    #
+    #     P[idx_x[N],idx_x[N]] = params.Q + params.reg*I
+    #     q[idx_x[N]] = params.Q*(X[N] - params.x_desired)
+    #
+    #     # solve the equality only constrained QP
+    #     # sol = lu([P A_eq';A_eq -params.reg*I(N*nx)])\[-q;b_eq]
+    #     sol = lu([P A_eq_c';A_eq_c spzeros(N*nx + 3,N*nx + 3)])\[-q;b_eq_c]
+    #     z = sol[1:length(q)]
+    #     qp_iters = 1
+    #
+    #
+    #     # if this violates the inequality constraints, then we send it to quadprog
+    #     # if sum(G*z .> h) != 0
+    #     if !all(G*z .<= h)
+    #         z, qp_iters = cp.quadprog(P,q,A_eq_c,b_eq_c,G,h; verbose = verbose,atol = atol,max_iters = 50)
+    #     end
+    #
+    #     @warn "solved constrained!"
+    #     # error()
+    # catch
+        # @warn "couldn't solve constrained problem"
+        P[idx_x[N],idx_x[N]] = params.Qf + params.reg*I
+        q[idx_x[N]] = params.Qf*(X[N] - params.x_desired)
+        # solve the equality only constrained QP
+        # sol = lu([P A_eq';A_eq -params.reg*I(N*nx)])\[-q;b_eq]
+        sol = lu([P A_eq';A_eq spzeros(N*nx,N*nx)])\[-q;b_eq]
+        z = sol[1:length(q)]
+        qp_iters = 1
 
-    # if this violates the inequality constraints, then we send it to quadprog
-    # if sum(G*z .> h) != 0
-    if !all(G*z .<= h)
-        z, qp_iters = cp.quadprog(P,q,A_eq,b_eq,G,h; verbose = verbose,atol = atol,max_iters = 50)
-    end
-
+        # if this violates the inequality constraints, then we send it to quadprog
+        # if sum(G*z .> h) != 0
+        if !all(G*z .<= h)
+            z, qp_iters = cp.quadprog(P,q,A_eq,b_eq,G,h; verbose = verbose,atol = atol,max_iters = 50)
+        end
+    # end
     # pull out δx and δu from z
     δx = [z[idx_x[i]] for i = 1:(N)]
     δu = [z[idx_u[i]] for i = 1:(N-1)]
@@ -384,17 +422,17 @@ let
     altitudes,densities, Ewind, Nwind = load_atmo()
     nx = 7
     nu = 2
-    Q = Diagonal([0,0,0,0,0,0.0,1e-4])
-    Qf = 1e8*Diagonal([1.0,1,1,0,0,0,1e-8])
+    Q = Diagonal([0,0,0,0,0,0.0,1e-8])
+    Qf = 1e8*Diagonal([1.0,1,1,0,0,0,0])
     Qf[7,7] = 1e-4
     R = Diagonal([.1,10.0])
-    xg = [3.34795153940262, 0.6269403895311674, 0.008024160056155994, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]
+    xg = [3.3477567254291762, 0.626903908492849, 0.03739968529144168, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]
 
 
-    u_min = [-100, .1]
+    u_min = [-100, 1e-8]
     u_max =  [100, 4.0]
-    δu_min = [-100,-.2]
-    δu_max = [100, 0.2]
+    δu_min = [-100,-.3]
+    δu_max = [100, 0.3]
 
     x_min = [-1e3*ones(6); -pi]
     x_max = [1e3*ones(6);   pi]
@@ -406,7 +444,7 @@ let
     ρ_spline = Spline1D(reverse(altitudes), reverse(densities))
     wE_spline = Spline1D(reverse(altitudes), reverse(Ewind))
     wN_spline = Spline1D(reverse(altitudes), reverse(Nwind))
-    reg = 1e-4
+    reg = 10.0
     X = [zeros(nx) for i = 1:10]
     U =[zeros(nu) for i = 1:10]
     # states :nominal :terminal :coast
@@ -548,8 +586,8 @@ let
     # # alt3, dr3, cr3, σ3, dt3, t_vec3, r3, v3 = process_ev_run(ev,X3,U3)
     #
     # # get the goals
-    Xg = [3.34795153940262, 0.6269403895311674, 0.008024160056155994, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]
-    alt_g, dr_g, cr_g = cp.postprocess_scaled(ev,[SVector{7}(Xg)],SVector{7}(Xsim[1]))
+    # Xg = [3.34795153940262, 0.6269403895311674, 0.008024160056155994, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]
+    alt_g, dr_g, cr_g = cp.postprocess_scaled(ev,[SVector{7}(xg)],SVector{7}(Xsim[1]))
     #
     mat"
     figure
