@@ -10,10 +10,10 @@ using StatsBase
 
 Random.seed!(1234)
 
-estimate_wind = 0 
+estimate_wind = 0
 
 # df = CSV.File("/home/josephine/.julia/dev/CPEG/src/MarsGramDataset/all/out1.csv")
-df = CSV.File("/Users/Josephine/.julia/dev/CPEG/src/MarsGramDataset/MonteCarlo/out3.csv")
+df = CSV.File("/Users/Josephine/.julia/dev/CPEG/src/MarsGramDataset/MonteCarlo/out1.csv")
 
 ρ_real = zeros(size(df))
 alt_real = zeros(size(df))
@@ -50,7 +50,7 @@ else
 end
 
 # first rollout
-dt = 0.1/ev.scale.tscale# 1/3600/ev.scale.tscale
+dt = 0.5/ev.scale.tscale# 1/3600/ev.scale.tscale
 N = 4000
 t_vec = (0:dt:((N-1)*dt))#*3600
 Y = [zeros(7) for i = 1:N]
@@ -62,7 +62,7 @@ X[1] = deepcopy(x0)
 μ = deepcopy(X)
 F = [zeros(10,10) for i = 1:N]
 Σ = (0.01*Matrix(float(I(state_number))))
-Σ[8,8] = (0.05)^2
+Σ[8,8] = (0.1)^2
 σm_ρ = zeros(N)
 σm_ρ[1] = Σ[8,8]^0.5
 if estimate_wind == 1
@@ -90,7 +90,7 @@ knw = zeros(N)
 
 
 if estimate_wind == 0
-    Q = diagm( [(5e-2)^2*ones(3)/ev.scale.dscale; .0001^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-10)^2;(1e-10)^2])
+    Q = 50*diagm( [(5e-2)^2*ones(3)/ev.scale.dscale; .0001^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-10)^2;(0.5e-4)^2])
 else
     Q = diagm( [(5e-2)^2*ones(3)/ev.scale.dscale; .0001^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-10)^2;(1e-10)^2;(1e-4)^2;(1e-4)^2])
     # Q = diagm( [(5e-1)^2*ones(3)/ev.scale.dscale; .001^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-10)^2;(1e-10)^2;(1e-6)^2;(1e-6)^2])
