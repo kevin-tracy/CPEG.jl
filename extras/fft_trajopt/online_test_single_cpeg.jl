@@ -251,38 +251,6 @@ function mpc_quad(params,X,U; verbose = true, atol = 1e-6)
     # TODO: maybe regularize
     P += params.reg*I
 
-    # # if params.constrain
-    # z = zeros(length(q))
-    # qp_iters = 0
-    # try
-    #     A_term = spzeros(3,nz)
-    #     A_term[:,idx_x[N][1:3]] = I(3)
-    #     b_term = params.x_desired[1:3] - X[N][1:3]
-    #     # @show "made it this far"
-    #     A_eq_c = [A_eq;A_term]
-    #     b_eq_c = [b_eq;b_term]
-    #     # @show "made it this far"
-    #
-    #
-    #     P[idx_x[N],idx_x[N]] = params.Q + params.reg*I
-    #     q[idx_x[N]] = params.Q*(X[N] - params.x_desired)
-    #
-    #     # solve the equality only constrained QP
-    #     # sol = lu([P A_eq';A_eq -params.reg*I(N*nx)])\[-q;b_eq]
-    #     sol = lu([P A_eq_c';A_eq_c spzeros(N*nx + 3,N*nx + 3)])\[-q;b_eq_c]
-    #     z = sol[1:length(q)]
-    #     qp_iters = 1
-    #
-    #
-    #     # if this violates the inequality constraints, then we send it to quadprog
-    #     # if sum(G*z .> h) != 0
-    #     if !all(G*z .<= h)
-    #         z, qp_iters = cp.quadprog(P,q,A_eq_c,b_eq_c,G,h; verbose = verbose,atol = atol,max_iters = 50)
-    #     end
-    #
-    #     @warn "solved constrained!"
-    #     # error()
-    # catch
         # @warn "couldn't solve constrained problem"
         P[idx_x[N],idx_x[N]] = params.Qf + params.reg*I
         q[idx_x[N]] = params.Qf*(X[N] - params.x_desired)
@@ -568,6 +536,8 @@ let
 
 
 
+
+
         Xsim[i+1] = rk4_fudge_mg(ev,SVector{7}(Xsim[i]),SA[Usim[i][1]],sim_dt/ev.scale.tscale, params)
 
         # check sim termination
@@ -580,6 +550,7 @@ let
 
     end
 
+    jldsave("controls_for_estimator.jld2"; U = Usim, X = Xsim)
     # Usim = [[Usim[i];dt] for i = 1:(length(Usim))]
     alt1, dr1, cr1, σ1, dt1, t_vec1, r1, v1 = process_ev_run(ev,Xsim,Usim)
     # # alt2, dr2, cr2, σ2, dt2, t_vec2, r2, v2 = process_ev_run(ev,X2,U2)
