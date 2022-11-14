@@ -139,7 +139,7 @@ end
 #     rk4_fudge(p.ev,SVector{7}(x1),SA[u1[1]],u1[2]/p.ev.scale.tscale, 1.0);
 # end
 
-function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/src/MarsGramDataset/all/out8.csv")
+function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/src/MarsGramDataset/all/out9.csv")
     TT = readdlm(path, ',')
     alt = Vector{Float64}(TT[2:end,2])
     density = Vector{Float64}(TT[2:end,end])
@@ -222,8 +222,8 @@ let
     xg = [3.3477567254291762, 0.626903908492849, 0.03739968529144168, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]
 
     ρ_spline = Spline1D(reverse(altitudes), reverse(densities))
-    wE_spline = Spline1D(reverse(altitudes), reverse(Ewind))
-    wN_spline = Spline1D(reverse(altitudes), reverse(Nwind))
+    wE_spline = Spline1D(reverse(altitudes), reverse(0*Ewind))
+    wN_spline = Spline1D(reverse(altitudes), reverse(0*Nwind))
 
 
     JLD = jldopen("/Users/kevintracy/.julia/dev/CPEG/controls_for_estimator.jld2")
@@ -232,8 +232,8 @@ let
     U = [U[i][1] for i = 1:length(U)]
     X = JLD["X"]
 
-    X = X[1:end]
-    U = U[1:end]
+    X = X[50:end]
+    U = U[50:end]
     uspl = Spline1D(0:1.0:(1.0*(length(U)-1)),U)
     x0 = X[1]
 
@@ -261,7 +261,7 @@ let
     Q = diagm([1e-15*ones(3); 1e-9*ones(3);1e-1;1e-1])
     # Q = 50*diagm( [(5e-2)^2*ones(3)/ev.scale.dscale; .0001^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-10)^2;(0.5e-4)^2])
     # R = diagm( 10*[(.1)^2*ones(3)/ev.scale.dscale; (0.0002)^2*ones(3)/(ev.scale.dscale/ev.scale.tscale);1e-10])/1000
-    R = diagm( 10*[(.1)^2*ones(3)/ev.scale.dscale; (0.0002)^2*ones(3)/(ev.scale.dscale/ev.scale.tscale);1e-10])
+    R = diagm( [(100)^2*ones(3)/ev.scale.dscale; (0.0002)^2*ones(3)/(ev.scale.dscale/ev.scale.tscale);1e-2])
     #Q = diagm( [(.005)^2*ones(3)/ev.scale.dscale; .005^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-3)^2;(1e-3)^2])
     #R = diagm( [(.1)^2*ones(3)/ev.scale.dscale; (0.0002)^2*ones(3)/(ev.scale.dscale/ev.scale.tscale);1e-10])
 
@@ -272,7 +272,7 @@ let
     μ = [zeros(8) for i = 1:N]
     μ[1] = [X[1];1.0] # start with kρ = 1
     F = [zeros(8,8) for i = 1:N]
-    F[1] = chol(diagm([1e-2*ones(7);.1]))*1
+    F[1] = chol(diagm([1e-10*ones(7);1]))
 
     X = [zeros(8) for i = 1:N]
     X[1] = [x0;1.0]
