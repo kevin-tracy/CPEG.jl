@@ -550,7 +550,7 @@ let
 
     end
 
-    jldsave("controls_for_estimator.jld2"; U = Usim, X = Xsim)
+    # jldsave("controls_for_estimator.jld2"; U = Usim, X = Xsim)
     # Usim = [[Usim[i];dt] for i = 1:(length(Usim))]
     alt1, dr1, cr1, σ1, dt1, t_vec1, r1, v1 = process_ev_run(ev,Xsim,Usim)
     # # alt2, dr2, cr2, σ2, dt2, t_vec2, r2, v2 = process_ev_run(ev,X2,U2)
@@ -580,16 +580,17 @@ let
     hold off
     "
     #
-    # v1s = [norm(v1[i]) for i = 1:length(v1)]
+    v1s = [norm(v1[i]) for i = 1:length(v1)]
     # # v2s = [norm(v2[i]) for i = 1:N]
     # # v3s = [norm(v3[i]) for i = 1:N]
     #
-    # mat"
-    # figure
-    # hold on
-    # plot($t_vec1,$v1s)
-    # hold off
-    # "
+    mat"
+    figure
+    hold on
+    plot($t_vec1,$v1s)
+    hold off
+    "
+    @show Xsim[50]
     # #
     # # mat"
     # # figure
@@ -601,16 +602,17 @@ let
     # # hold off
     # # "
     # #
-    # # mat"
-    # # figure
-    # # hold on
-    # # title('Controls')
-    # # plot($t_vec(1:end-1), $Um')
-    # # legend('sigma dot','dt')
-    # # xlabel('Time (s)')
-    # # hold off
-    # # "
-    # #
+    σ̇ = [Usim[i][1] for i = 1:length(Usim)]
+    mat"
+    figure
+    hold on
+    title('Controls')
+    plot($σ̇)
+    legend('sigma dot','dt')
+    xlabel('Time (s)')
+    hold off
+    "
+
     mat"
     figure
     hold on

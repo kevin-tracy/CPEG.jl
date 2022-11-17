@@ -139,12 +139,12 @@ end
 #     rk4_fudge(p.ev,SVector{7}(x1),SA[u1[1]],u1[2]/p.ev.scale.tscale, 1.0);
 # end
 
-function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/src/MarsGramDataset/all/out9.csv")
+function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/src/MarsGramDataset/all/out10.csv")
     TT = readdlm(path, ',')
     alt = Vector{Float64}(TT[2:end,2])
     density = Vector{Float64}(TT[2:end,end])
-    Ewind = Vector{Float64}(TT[2:end,8])
-    Nwind = Vector{Float64}(TT[2:end,10])
+    Ewind = Vector{Float64}(TT[2:end,7])
+    Nwind = Vector{Float64}(TT[2:end,9])
     return alt*1000, density, Ewind, Nwind
 end
 
@@ -222,9 +222,30 @@ let
     xg = [3.3477567254291762, 0.626903908492849, 0.03739968529144168, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]
 
     ρ_spline = Spline1D(reverse(altitudes), reverse(densities))
-    wE_spline = Spline1D(reverse(altitudes), reverse(0*Ewind))
-    wN_spline = Spline1D(reverse(altitudes), reverse(0*Nwind))
+    wE_spline = Spline1D(reverse(altitudes), reverse(Ewind))
+    wN_spline = Spline1D(reverse(altitudes), reverse(Nwind))
 
+    # ρ1 = densities
+    # alt2= range(altitudes[1],altitudes[end], length = 500)
+    # ρ2 = ρ_spline(alt2)
+    # mat"
+    # figure
+    # hold on
+    # plot($altitudes, log($ρ1),'ro')
+    # plot($alt2, log($ρ2))
+    # hold off
+    # "
+    ρ1 = Ewind
+    alt2= range(altitudes[1],altitudes[end], length = 500)
+    ρ2 = wE_spline(alt2)
+    mat"
+    figure
+    hold on
+    plot($altitudes, ($ρ1),'ro')
+    plot($alt2, ($ρ2),'b--')
+    hold off
+    "
+    error()
 
     JLD = jldopen("/Users/kevintracy/.julia/dev/CPEG/controls_for_estimator.jld2")
     U = JLD["U"]
@@ -257,13 +278,9 @@ let
     #Q = diagm( [(.005)^2*ones(3)/ev.scale.dscale; .005^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-3)^2;(1e-3)^2])
     #R = diagm( [(.1)^2*ones(3)/ev.scale.dscale; (0.0002)^2*ones(3)/(ev.scale.dscale/ev.scale.tscale);1e-10])
 
-    # Q = diagm( [(.000005)^2*ones(3)/ev.scale.dscale; .000005^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-10)^2;(1e-10)^2])
-    Q = diagm([1e-15*ones(3); 1e-9*ones(3);1e-1;1e-1])
-    # Q = 50*diagm( [(5e-2)^2*ones(3)/ev.scale.dscale; .0001^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-10)^2;(0.5e-4)^2])
-    # R = diagm( 10*[(.1)^2*ones(3)/ev.scale.dscale; (0.0002)^2*ones(3)/(ev.scale.dscale/ev.scale.tscale);1e-10])/1000
-    R = diagm( [(100)^2*ones(3)/ev.scale.dscale; (0.0002)^2*ones(3)/(ev.scale.dscale/ev.scale.tscale);1e-2])
-    #Q = diagm( [(.005)^2*ones(3)/ev.scale.dscale; .005^2*ones(3)/(ev.scale.dscale/ev.scale.tscale); (1e-3)^2;(1e-3)^2])
-    #R = diagm( [(.1)^2*ones(3)/ev.scale.dscale; (0.0002)^2*ones(3)/(ev.scale.dscale/ev.scale.tscale);1e-10])
+    Q = diagm([1e-15*ones(3); 1e-8*ones(3);1e-1;1e-2])
+
+    R = diagm( [(.1/ev.scale.dscale)^2*ones(3); (0.005/(ev.scale.dscale/ev.scale.tscale))^2*ones(3);1e-2])
 
 
     kf_sys = (dt = sim_dt_scaled, ΓR = chol(R), ΓQ = chol(Q))
@@ -310,11 +327,20 @@ let
     kρ_true = [calc_kρ(params,X[i]) for i = 1:N]
     kρ_est = [μ[i][8] for i = 1:N]
 
+    alts = [alt_from_x(ev, X[i]) for i = 1:N]
+
     mat"
     figure
     hold on
     plot($kρ_true)
     plot($kρ_est)
+    hold off
+    "
+
+    mat"
+    figure
+    hold on
+    plot($alts)
     hold off
     "
 
