@@ -15,9 +15,61 @@ using MATLAB
 
 include(joinpath(@__DIR__,"simple_altro.jl"))
 
-function discrete_dynamics(p::NamedTuple,x,u,k)
-    dt = u[2]
-    cp.rk4(p.ev,SVector{7}(x),SA[u[1]],dt/p.ev.scale.tscale)
+function dynamics_fudge(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}, kρ::T2) where {T,W,T2}
+
+    # scaled variables
+    r_scaled = x[SA[1,2,3]]
+    v_scaled = x[SA[4,5,6]]
+    σ = x[7]
+
+    # unscale
+    r, v = cp.unscale_rv(ev.scale,r_scaled,v_scaled)
+
+    # altitude
+    h,_,_ = cp.altitude(ev.params.gravity, r)
+    # @show h
+    # @show cp.density_spline(ev.params.dsp, h)
+    ρ = kρ*cp.density_spline(ev.params.dsp, h)
+
+    # lift and drag magnitudes
+    L, D = cp.LD_mags(ev.params.aero,ρ,r,v)
+
+    # basis for e frame
+    e1, e2 = cp.e_frame(r,v)
+
+    # drag and lift accelerations
+    D_a = -(D/norm(v))*v
+    L_a = L*sin(σ)*e1 + L*cos(σ)*e2
+
+    # gravity
+    g = cp.gravity(ev.params.gravity,r)
+
+    # acceleration
+    ω = ev.planet.ω
+    a = D_a + L_a + g - 2*cross(ω,v) - cross(ω,cross(ω,r))
+
+    # rescale units
+    v,a = cp.scale_va(ev.scale,v,a)
+
+    return SA[v[1],v[2],v[3],a[1],a[2],a[3],u[1]*ev.scale.uscale]
+end
+
+function rk4_fudge(
+    ev::cp.CPEGWorkspace,
+    x_n::SVector{7,T},
+    u::SVector{1,W},
+    dt_s::T2, kρ::T3) where {T,W,T2,T3}
+
+    k1 = dt_s*dynamics_fudge(ev,x_n,u,kρ)
+    k2 = dt_s*dynamics_fudge(ev,x_n+k1/2,u,kρ)
+    k3 = dt_s*dynamics_fudge(ev,x_n+k2/2,u,kρ)
+    k4 = dt_s*dynamics_fudge(ev,x_n+k3,u,kρ)
+
+    return (x_n + (1/6)*(k1 + 2*k2 + 2*k3 + k4))
+end
+
+function discrete_dynamics(p,x1,u1,k)
+    rk4_fudge(p.ev,SVector{7}(x1),SA[u1[1]],u1[2]/p.ev.scale.tscale, 1.0);
 end
 
 function ineq_con_u(p::NamedTuple,u)
@@ -34,7 +86,10 @@ function ineq_con_x_jac(params,x)
     nx = params.nx
     Array(float([I(nx);-I(nx)]))
 end
-
+function v_from_xs(ev,x)
+    r, v = cp.unscale_rv(ev.scale,x[SA[1,2,3]],x[SA[4,5,6]])
+    norm(v)
+end
 let
     nx = 7
     nu = 2
@@ -52,7 +107,8 @@ let
 
 
     dt = NaN
-    x0 = [3.5212,0,0, -1.559452236319901, 5.633128235948198,0,0.05235987755982989]
+    # x0 = [3.5212,0,0, -1.559452236319901, 5.633128235948198,0,0]
+    x0 = [3.4440871839763183, 0.2678691116554091, 3.2123176670031554e-5, -1.67259937570187, 5.602609333212407, 0.005001821126044161, 0.87]
     xg = [3.34795153940262, 0.6269403895311674, 0.008024160056155994, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]
     Xref = [copy(xg) for i = 1:N]
     Uref = [[0,2.0] for i = 1:N-1]
@@ -167,4 +223,16 @@ let
     xlabel('Time (s)')
     hold off
     "
+
+    # @show norm((X[end][1:3] - xg[1:3])*ev.scale.dscale / 1e3)
+    function v_from_xs(ev,x)
+        r, v = cp.unscale_rv(ev.scale,x[SA[1,2,3]],x[SA[4,5,6]])
+        norm(v)
+    end
+    vs = [v_from_xs(ev,x) for x in X]
+    σ̇ = [u[1] for u in U]
+
+    @show vs
+    @show σ̇
+    @show X[25]
 end
