@@ -179,117 +179,19 @@ let
     # grad(_θ) = FiniteDiff.finite_difference_gradient(__θ -> rollout_to_vt(params,x0_s,__θ), _θ)
     batch_size = 50
     θ = zeros(5)
-    for ga_iter = 1:100
+    for ga_iter = 1:50
 
         Js = zeros(batch_size)
         θs = [deepcopy(θ) for i = 1:batch_size]
         Js[1] = cost(θs[1])
         @show sqrt(Js[1])
         for i = 2:batch_size
-            θs[i] += .3*randn(length(θ))
+            θs[i] += 0.3*randn(length(θ))
             Js[i] = cost(θs[i])
         end
 
         θ = θs[argmin(Js)]
     end
-    # # momentum
-    # γ = 0.3
-    # η = 1e-4
-    # v = η*FiniteDiff.finite_difference_gradient(_θ -> rollout_to_vt(params,x0_s,_θ), θ)
-    # for gd_iter = 1:10
-    #     cost = rollout_to_vt(params,x0_s,θ)
-    #     @show sqrt(cost)
-    #     if sqrt(cost)<.01
-    #         @info "success"
-    #         break
-    #     end
-    #     v = γ*v + η*FiniteDiff.finite_difference_gradient(_θ -> rollout_to_vt(params,x0_s,_θ), θ)
-    #     θ -= v
-    # end
-    #
-    # # grad + newton
-    # η = 1e-4
-    # for gd_iter = 1:200
-    #     cost = rollout_to_vt(params,x0_s,θ)
-    #     @show sqrt(cost)
-    #     if sqrt(cost)<.01
-    #         @info "success"
-    #         break
-    #     end
-    #     grad = FiniteDiff.finite_difference_gradient(_θ -> rollout_to_vt(params,x0_s,_θ), θ)
-    #     if sqrt(cost)>10
-    #         θ -= η*grad
-    #     else
-    #         @info "newton"
-    #         H= FiniteDiff.finite_difference_hessian(_θ -> rollout_to_vt(params,x0_s,_θ), θ)
-    #         Δθ = (H + 1e-4*I)\grad
-    #         θ = θ - Δθ
-    #         if norm(Δθ) < 1e-3
-    #             @info "success"
-    #             break
-    #         end
-    #     end
-    # end
-
-    # # BFGS
-    # # θ = 0.0001*randn(5)
-    # n = length(θ)
-    # # B = 1*diagm(ones(n))
-    # B = FiniteDiff.finite_difference_hessian(_θ -> rollout_to_vt(params,x0_s,_θ), θ)
-    # grad_old = FiniteDiff.finite_difference_gradient(_θ -> rollout_to_vt(params,x0_s,_θ), θ)
-    # cost_old = rollout_to_vt(params,x0_s,θ)
-    #
-    # # θ
-    # α = 1.0
-    # for bfgs_iter = 1:10
-    #
-    #     grad = FiniteDiff.finite_difference_gradient(_θ -> rollout_to_vt(params,x0_s,_θ), θ)
-    #     s = -(B+ 1e-3*I)\grad
-    #
-    #
-    #     # line search
-    #     α = 1.0
-    #     J = rollout_to_vt(params,x0_s,θ)
-    #     for i = 1:100
-    #         θ_new = θ + α*s
-    #         # @show θ
-    #         # @show α
-    #         # @show s
-    #         # @show θ_new
-    #         # try
-    #             J2 = rollout_to_vt(params,x0_s,θ_new; verbose = false)
-    #         # catch
-    #             # J2 = 1e10
-    #         # end
-    #         if J2<J
-    #             # @info "good step"
-    #             θ = 1*θ_new
-    #             # s = α*s
-    #             break
-    #         else
-    #             α /= 2
-    #         end
-    #     end
-    #
-    #     grad_new = FiniteDiff.finite_difference_gradient(_θ -> rollout_to_vt(params,x0_s,_θ), θ)
-    #     y = grad_new - grad
-    #
-    #     # @info "before"
-    #     # @show B
-    #     # @show s
-    #     # @show y
-    #     # @show dot(y,s)
-    #     B = B - (B*s)*(s'*B)/(s'*B*s) + (y*y')/dot(y,s)
-    #     # @show B
-    #     # @info "after"
-    #
-    #     @show bfgs_iter, norm(grad_new), α, sqrt(J)
-    #     if sqrt(J)<1e-1
-    #         @info "bfgs success"
-    #         break
-    #     end
-    # end
-
 
     vs = Vector(range(v0,vf,length = 100))
     σ̇ = [legendre_policy(params,vs[i],θ) for i = 1:length(vs)]
