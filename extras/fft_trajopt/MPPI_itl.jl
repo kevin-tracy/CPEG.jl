@@ -19,7 +19,7 @@ using LegendrePolynomials
 
 import FiniteDiff
 
-function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/src/MarsGramDataset/all/out8.csv")
+function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/src/MarsGramDataset/all/out9.csv")
     TT = readdlm(path, ',')
     alt = Vector{Float64}(TT[2:end,2])
     density = Vector{Float64}(TT[2:end,end])
@@ -201,7 +201,7 @@ function rollout_to_vt(params,x0_s,θ; verbose = false)
             tt = (params.vt - v1) / (v2 - v1)
             xt = x_old*(1 - tt) + tt*x_new
             vt = v_from_xs(params.ev, xt)
-            return (norm(params.proj_mat*(xt[SA[1,2,3]] - params.xg_s[SA[1,2,3]]))*params.ev.scale.dscale/1000)^2
+            return (norm(params.proj_mat*(xt[SA[1,2,3]] - params.xg_s[SA[1,2,3]]))*params.ev.scale.dscale/1000)^2 #+ 1e-8*θ'*θ
         end
     end
     error("didn't hit vt something is fucked")
@@ -210,13 +210,13 @@ end
 function MPPI_policy(params,x0_s, θ)
     cost(_θ) = rollout_to_vt(params,x0_s,_θ)
 
-    if sqrt(cost(θ)) < 1.0
+    if sqrt(cost(θ)) < 5.0
         grad(_θ) = FiniteDiff.finite_difference_gradient(__θ -> rollout_to_vt(params,x0_s,__θ), _θ)
         hess(_θ) = FiniteDiff.finite_difference_hessian(__θ -> rollout_to_vt(params,x0_s,__θ), _θ)
 
         H = hess(θ)
         g = grad(θ)
-        Δθ = -(H + 1e-3*I)\g
+        Δθ = -(H + 1e-1*I)\g
         θ = linesearch(cost, θ, Δθ)
 
         σ̇ = legendre_policy(params,v_from_xs(params.ev,x0_s),θ)*params.ev.scale.uscale
@@ -265,7 +265,7 @@ function MPPI_policy_hess(params,x0_s, θ)
 
     H = hess(θ)
     g = grad(θ)
-    Δθ = -(H + 1e-3*I)\g
+    Δθ = -(H + 1e-1*I)\g
     θ = linesearch(cost, θ, Δθ)
 
     σ̇ = legendre_policy(params,v_from_xs(params.ev,x0_s),θ)*params.ev.scale.uscale
@@ -425,7 +425,7 @@ let
     Usim = [zeros(2) for i = 1:T-1]
 
     @info "starting sim"
-    θ = zeros(5)
+    θ = zeros(4)
     for i = 1:T-1
 
         # Usim[i] = MPPI_policy(params,x0_s, θ)

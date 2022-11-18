@@ -176,17 +176,18 @@ let
     # @show rollout_to_vt(params,x0_s,θ)
 
     cost(_θ) = rollout_to_vt(params,x0_s,_θ)
-    # grad(_θ) = FiniteDiff.finite_difference_gradient(__θ -> rollout_to_vt(params,x0_s,__θ), _θ)
+    grad(_θ) = FiniteDiff.finite_difference_gradient(__θ -> rollout_to_vt(params,x0_s,__θ), _θ)
     batch_size = 50
     θ = zeros(5)
     for ga_iter = 1:50
 
         Js = zeros(batch_size)
         θs = [deepcopy(θ) for i = 1:batch_size]
+        g = grad(θ)
         Js[1] = cost(θs[1])
         @show sqrt(Js[1])
         for i = 2:batch_size
-            θs[i] += 0.3*randn(length(θ))
+            θs[i] += 1e-5*g + 0.1*randn(length(θ)) # bias in direction of gradient?
             Js[i] = cost(θs[i])
         end
 
