@@ -25,6 +25,7 @@ mutable struct Params{Tf,Ti}
     states_visited::Dict{Symbol, Bool}
     N_mpc::Ti
     kρ::Tf
+    # TODO: add sim_dt
 end
 
 function jacobs(params,X,U)

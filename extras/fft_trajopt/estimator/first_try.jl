@@ -235,17 +235,17 @@ let
     # plot($alt2, log($ρ2))
     # hold off
     # "
-    ρ1 = Ewind
-    alt2= range(altitudes[1],altitudes[end], length = 500)
-    ρ2 = wE_spline(alt2)
-    mat"
-    figure
-    hold on
-    plot($altitudes, ($ρ1),'ro')
-    plot($alt2, ($ρ2),'b--')
-    hold off
-    "
-    error()
+    # ρ1 = Ewind
+    # alt2= range(altitudes[1],altitudes[end], length = 500)
+    # ρ2 = wE_spline(alt2)
+    # mat"
+    # figure
+    # hold on
+    # plot($altitudes, ($ρ1),'ro')
+    # plot($alt2, ($ρ2),'b--')
+    # hold off
+    # "
+    # error()
 
     JLD = jldopen("/Users/kevintracy/.julia/dev/CPEG/controls_for_estimator.jld2")
     U = JLD["U"]
@@ -280,7 +280,7 @@ let
 
     Q = diagm([1e-15*ones(3); 1e-8*ones(3);1e-1;1e-2])
 
-    R = diagm( [(.1/ev.scale.dscale)^2*ones(3); (0.005/(ev.scale.dscale/ev.scale.tscale))^2*ones(3);1e-2])
+    R = diagm( [(.1/ev.scale.dscale)^2*ones(3); (0.05/(ev.scale.dscale/ev.scale.tscale))^2*ones(3);1e-2])
 
 
     kf_sys = (dt = sim_dt_scaled, ΓR = chol(R), ΓQ = chol(Q))

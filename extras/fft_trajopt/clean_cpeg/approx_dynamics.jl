@@ -58,6 +58,9 @@ function controller_discrete_dynamics(p,x1,u1,k) where {T1,T2}
     rk4_approx_dynamics(p.ev,SVector{7}(x1),SA[u1[1]],u1[2]/p.ev.scale.tscale, p.kρ);
 end
 
-# function filter_discrete_dynamics(p,x1,u1,k)
-#     rk4_approx_dynamics(p.ev,SVector{7}(x1[1:7]),SA[u1[1]],u1[2]/p.ev.scale.tscale, x1[8]);
-# end
+function filter_discrete_dynamics(p,x1,u1,dt)
+    @assert length(x1)==8
+    @assert length(u1)==1
+    # add kρ̇ = 0 onto the output
+    [rk4_approx_dynamics(p.ev,SVector{7}(x1[1:7]),SA[u1[1]],dt/p.ev.scale.tscale, x1[8]);x1[8]]
+end
