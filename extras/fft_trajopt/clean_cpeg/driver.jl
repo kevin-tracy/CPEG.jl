@@ -26,7 +26,7 @@ Random.seed!(1)
 
 let
 
-    # let's run some MPC
+    # get entry vehicle stuff working
     ev = cp.CPEGWorkspace()
 
     # vehicle parameters
@@ -36,7 +36,7 @@ let
     ev.params.aero.m = 2400.0                # kg
 
     # sim stuff
-    ev.dt = NaN # seconds
+    ev.dt = NaN # seconds (this is NaN to make sure it doesn't get used)
 
     # CPEG settings
     ev.scale.uscale = 1e1
@@ -95,7 +95,7 @@ let
 
     # main sim
     T = 3000
-    sim_dt = 0.5
+    sim_dt = 1.0
     Xsim = [zeros(7) for i = 1:T]
     Xsim[1] = x0_scaled
     Usim = [zeros(2) for i = 1:T-1]
