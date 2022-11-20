@@ -1,5 +1,5 @@
 
-function filter_dynamics(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}, kρ::T2) where {T,W,T2}
+function approx_dynamics(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}, kρ::T2) where {T,W,T2}
 
     # scaled variables
     r_scaled = x[SA[1,2,3]]
@@ -38,20 +38,26 @@ function filter_dynamics(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W},
     return SA[v[1],v[2],v[3],a[1],a[2],a[3],u[1]*ev.scale.uscale]
 end
 
-function rk4_filter_dynamics(
+function rk4_approx_dynamics(
     ev::cp.CPEGWorkspace,
     x_n::SVector{7,T},
     u::SVector{1,W},
     dt_s::T2, kρ::T3) where {T,W,T2,T3}
 
-    k1 = dt_s*filter_dynamics(ev,x_n,u,kρ)
-    k2 = dt_s*filter_dynamics(ev,x_n+k1/2,u,kρ)
-    k3 = dt_s*filter_dynamics(ev,x_n+k2/2,u,kρ)
-    k4 = dt_s*filter_dynamics(ev,x_n+k3,u,kρ)
+    k1 = dt_s*approx_dynamics(ev,x_n,u,kρ)
+    k2 = dt_s*approx_dynamics(ev,x_n+k1/2,u,kρ)
+    k3 = dt_s*approx_dynamics(ev,x_n+k2/2,u,kρ)
+    k4 = dt_s*approx_dynamics(ev,x_n+k3,u,kρ)
 
     return (x_n + (1/6)*(k1 + 2*k2 + 2*k3 + k4))
 end
 
-function filter_discrete_dynamics(p,x1,u1,k)
-    rk4_filter_dynamics(p.ev,SVector{7}(x1),SA[u1[1]],u1[2]/p.ev.scale.tscale, 1.0);
+function controller_discrete_dynamics(p,x1,u1,k) where {T1,T2}
+    @assert length(x1)==7
+    @assert length(u1)==2
+    rk4_approx_dynamics(p.ev,SVector{7}(x1),SA[u1[1]],u1[2]/p.ev.scale.tscale, p.kρ);
 end
+
+# function filter_discrete_dynamics(p,x1,u1,k)
+#     rk4_approx_dynamics(p.ev,SVector{7}(x1[1:7]),SA[u1[1]],u1[2]/p.ev.scale.tscale, x1[8]);
+# end

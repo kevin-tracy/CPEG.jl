@@ -24,12 +24,13 @@ mutable struct Params{Tf,Ti}
     state::Symbol
     states_visited::Dict{Symbol, Bool}
     N_mpc::Ti
+    kρ::Tf
 end
 
 function jacobs(params,X,U)
     N = length(X)
-    A = [FD.jacobian(_x -> filter_discrete_dynamics(params,_x,U[k],k),X[k]) for k = 1:N-1]
-    B = [FD.jacobian(_u -> filter_discrete_dynamics(params,X[k],_u,k),U[k]) for k = 1:N-1]
+    A = [FD.jacobian(_x -> controller_discrete_dynamics(params,_x,U[k],k),X[k]) for k = 1:N-1]
+    B = [FD.jacobian(_u -> controller_discrete_dynamics(params,X[k],_u,k),U[k]) for k = 1:N-1]
     A,B
 end
 function mpc_quad(params,X,U; verbose = true, atol = 1e-6)
@@ -130,7 +131,7 @@ function rollout(params,x0,U)
     N = length(U) + 1
     X = [deepcopy(x0) for i = 1:N]
     for i = 1:N-1
-        X[i+1] = filter_discrete_dynamics(params,X[i],U[i],i)
+        X[i+1] = controller_discrete_dynamics(params,X[i],U[i],i)
     end
     return X
 end
@@ -158,7 +159,7 @@ function rollout_to_altitude(params,x0,U)
     for i = 1:N-1
         # @show i
         # @show X[i]
-        X[i+1] = filter_discrete_dynamics(params,X[i],U[i],i)
+        X[i+1] = controller_discrete_dynamics(params,X[i],U[i],i)
         # error()
         if alt_from_x(params.ev,X[i+1][1:3]) < alt_from_x(params.ev,params.x_desired[1:3])
             return i

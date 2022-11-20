@@ -17,7 +17,7 @@ using DelimitedFiles
 using Dierckx
 
 include(joinpath(@__DIR__,"utils.jl"))
-include(joinpath(@__DIR__,"filter_dynamics.jl"))
+include(joinpath(@__DIR__,"approx_dynamics.jl"))
 include(joinpath(@__DIR__,"real_dynamics.jl"))
 include(joinpath(@__DIR__,"controller.jl"))
 
@@ -86,7 +86,7 @@ let
                     ev, reg, X, U,
                     :nominal,
                     Dict(:nominal => true, :terminal => false, :coast => false),
-                    10)
+                    10,1.0)
 
 
 
@@ -100,7 +100,6 @@ let
     Xsim[1] = x0_scaled
     Usim = [zeros(2) for i = 1:T-1]
 
-    qp_iters = -1
     @info "starting sim"
     for i = 1:T-1
 
