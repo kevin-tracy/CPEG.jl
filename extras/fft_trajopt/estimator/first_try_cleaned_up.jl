@@ -70,6 +70,26 @@ function calc_kρ(params,x)
 
     return ρ2/ρ1
 end
+
+function initialize_kf(ev, sim_dt, N, μ0, Σ0)
+    dscale, tscale = ev.scale.dscale, ev.scale.tscale
+
+    Q = diagm([1e-15*ones(3); 1e-8*ones(3);1e-10;1e-2])
+    R = diagm( [(100/ev.scale.dscale)^2*ones(3); (0.1/(ev.scale.dscale/ev.scale.tscale))^2*ones(3);1e-2])
+
+
+    kf_sys = (sim_dt = sim_dt, ΓR = chol(R), ΓQ = chol(Q))
+    Y = [zeros(7) for i = 1:N]
+
+    μ = [zeros(8) for i = 1:N]
+    # μ[1] = [X[1];1.0] # start with kρ = 1
+    μ[1] = μ0
+    F = [zeros(8,8) for i = 1:N]
+    # F[1] = chol(diagm([1e-10*ones(7);1]))
+    F[1] = chol(Σ0)
+    return μ,F,kf_sys,Y
+end
+
 let
 
     # let's run some MPC
@@ -95,8 +115,8 @@ let
     xg = [3.3477567254291762, 0.626903908492849, 0.03739968529144168, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]
 
     ρ_spline = Spline1D(reverse(altitudes), reverse(densities))
-    wE_spline = Spline1D(reverse(altitudes), reverse(Ewind))
-    wN_spline = Spline1D(reverse(altitudes), reverse(Nwind))
+    wE_spline = Spline1D(reverse(altitudes), reverse(1*Ewind))
+    wN_spline = Spline1D(reverse(altitudes), reverse(1*Nwind))
 
     JLD = jldopen("/Users/kevintracy/.julia/dev/CPEG/controls_for_estimator.jld2")
     U = JLD["U"]
@@ -109,36 +129,23 @@ let
     uspl = Spline1D(0:1.0:(1.0*(length(U)-1)),U)
     x0 = X[1]
 
-    # uv =
 
     N = length(X)
     X = [zeros(7) for i = 1:(10*N)]
     X[1] = x0
-    # sim_dt_scaled = 0.2/ev.scale.tscale
     sim_dt= 0.2
 
     params = (ev = ev,ρ_spline = ρ_spline,wE_spline = wE_spline,wN_spline = wN_spline)
 
 
-    dscale, tscale = ev.scale.dscale, ev.scale.tscale
-
-    Q = diagm([1e-15*ones(3); 1e-8*ones(3);1e-1;1e-2])
-    R = diagm( [(.1/ev.scale.dscale)^2*ones(3); (0.05/(ev.scale.dscale/ev.scale.tscale))^2*ones(3);1e-2])
-
-
-    kf_sys = (sim_dt = sim_dt, ΓR = chol(R), ΓQ = chol(Q))
-    Y = [zeros(7) for i = 1:N]
-
-    μ = [zeros(8) for i = 1:N]
-    μ[1] = [X[1];1.0] # start with kρ = 1
-    F = [zeros(8,8) for i = 1:N]
-    F[1] = chol(diagm([1e-10*ones(7);1]))
+    μ,F,kf_sys,Y = initialize_kf(ev, sim_dt, N, [x0;1.0], diagm([1e-10*ones(7);.1]))
 
     X = [zeros(7) for i = 1:N]
     X[1] = 1*x0
 
-    sim_dt = 0.2
-
+    kρ_est = zeros(N)
+    α = 0.5
+    kρ_est[1] = 1
     for i = 1:(N-1)
 
         u = SA[uspl(sim_dt*(i-1))]
@@ -147,12 +154,18 @@ let
         Y[i+1] = X[i+1][1:7] + kf_sys.ΓR*randn(7)
 
         μ[i+1],F[i+1] = sqrkalman_filter(μ[i],F[i],u,Y[i+1],kf_sys,params)
-        # μ[i+1], F[i+1] = cp.sqrkalman_filter(ev, SVector{8}(μ[i]),F[i],u,Y[i+1],kf_sys)
+        kρ_est[i+1] = (1-α)*μ[i+1][8] + α*kρ_est[i]
     end
 
+    # TODO:
+    # next steps
+    # 1. add this into driver.jl, wrap a function around this where we push the
+    # filter and dynamics through one of the time steps
+    # 2. option 2 is just call update_control! when it is time to update the
+    # control (right now I vote for option 2)
     @show μ
     kρ_true = [calc_kρ(params,X[i]) for i = 1:N]
-    kρ_est = [μ[i][8] for i = 1:N]
+
 
     alts = [alt_from_x(ev, X[i]) for i = 1:N]
 
