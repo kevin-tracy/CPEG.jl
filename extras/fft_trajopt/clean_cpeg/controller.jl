@@ -260,3 +260,73 @@ function update_control!(params, Xsim, Usim, sim_dt, idx)
     end
 
 end
+
+function update_control_2!(params, x0_scaled, sim_dt,idx)
+
+    σ̇ = 0.0
+    if params.state == :nominal
+        dts = [params.U[i][2] for i = 1:length(params.U)]
+        tf = sum(dts)
+        params.N_mpc = Int(ceil((tf)/params.u_desired[2]))
+        if params.N_mpc < 50
+            params.state = :terminal
+        end
+    end
+    if params.state == :terminal
+        if !params.states_visited[:terminal]
+            params.u_desired[2] = 1.0
+            params.U = downsample_controls(params.U, params.u_desired[2])
+            params.states_visited[:terminal] = :true
+        end
+        dts = [params.U[i][2] for i = 1:length(params.U)]
+        tf = sum(dts)
+        params.N_mpc = Int(ceil((tf)/params.u_desired[2]))
+    end
+
+
+    if params.state != :coast
+        # CPEG
+        # adjust control if mismatch with N_mpc
+        params.U = fix_control_size(params,params.U,params.N_mpc)
+
+        # do rollout
+        params.X = rollout(params,x0_scaled,params.U)
+        # params.X, params.U, params.N_mpc = rollout2(params,Xsim[i],params.U)
+
+        params.U, qp_iters = mpc_quad(params,params.X,params.U; verbose = false, atol = 1e-6)
+    end
+
+    # add the control
+    if (params.state == :coast) || (length(params.U) == 0)
+        params.state = :coast
+        # Usim[i] = [Usim[i-1][1];sim_dt]
+        # Usim[idx] .= [0;sim_dt]
+    else # if we are in nominal or terminal
+        # Usim[idx] .= [params.U[1][1]; sim_dt]
+        σ̇ = params.U[1][1]
+    end
+
+    if params.state != :coast
+        if rem(idx-1,7)==0
+            @printf "iter    state     altitude    N_mpc     dt     qp_iter    miss        d_left\n"
+            @printf "----------------------------------------------------------------------------\n"
+        end
+        alt = alt_from_x(params.ev, x0_scaled)/1000
+        md = params.ev.scale.dscale*norm(params.X[end][1:3] - params.x_desired[1:3])/1e3
+        d_left = params.ev.scale.dscale*norm(x0_scaled[1:3] - params.x_desired[1:3])/1e3
+        @printf("%4d    %-7s   %6.2f      %3d      %5.2f  %3d       %6.2f     %6.2f\n",
+          idx, String(params.state), alt, params.N_mpc, params.u_desired[2], qp_iters, md, d_left)
+    else
+        if rem(idx-1,7)==0
+            @printf "iter    state     altitude    N_mpc     dt     qp_iter    miss        d_left\n"
+            @printf "----------------------------------------------------------------------------\n"
+        end
+        alt = alt_from_x(params.ev, x0_scaled)/1000
+        md = NaN
+        d_left = params.ev.scale.dscale*norm(x0_scaled[1:3] - params.x_desired[1:3])/1e3
+        @printf("%4d    %-7s   %6.2f      %3d      %5.2f  %3d       %6.2f     %6.2f\n",
+          idx, String(params.state), alt, NaN, NaN, NaN, NaN, d_left)
+    end
+
+    return σ̇
+end

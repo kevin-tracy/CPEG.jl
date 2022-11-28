@@ -1,5 +1,5 @@
 
-function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/src/MarsGramDataset/all/out8.csv")
+function load_atmo(;path="/Users/kevintracy/.julia/dev/CPEG/src/MarsGramDataset/all/out4.csv")
     TT = readdlm(path, ',')
     alt = Vector{Float64}(TT[2:end,2])
     density = Vector{Float64}(TT[2:end,end])
