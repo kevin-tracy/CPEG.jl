@@ -45,6 +45,8 @@ for i in datasets
     alts[i], drs[i], crs[i], σs[i], t_vecs[i], σ̇s[i], dr_errors[i], cr_errors[i], qp_iters[i], alt_g, dr_g, cr_g = run_cpeg_sim(path; verbose = false, use_filter = true)
 end
 
+using JLD2
+jldsave("mc_1000.jld2"; alts, drs, crs, σs, t_vecs, σ̇s, dr_errors, cr_errors, qp_iters, alt_g, dr_g, cr_g)
 # mat"
 # figure
 # hold on
@@ -86,13 +88,23 @@ yline(0)
 legend([p1,p2],'Terminal Error','3 sigma')
 hold off
 "
-
+mat"
+figure
+hold on
+for i = 1:$N_data
+    plot($qp_iters{i})
+end
+hold off
+"
 qp_iters_stacked = filter(!iszero,vcat(qp_iters...))
 mat"
 figure
 hold on
 h1 = histogram($qp_iters_stacked)
 h1.Normalization = 'probability';
+ytix = get(gca, 'YTick');
+set(gca, 'YTick',ytix, 'YTickLabel',ytix*100)
+xticks([1,2,3,4,5,6,7,8,9,10,11])
 hold off
 "
 
