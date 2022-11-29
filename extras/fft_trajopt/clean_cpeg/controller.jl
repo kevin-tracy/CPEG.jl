@@ -261,9 +261,10 @@ function update_control!(params, Xsim, Usim, sim_dt, idx)
 
 end
 
-function update_control_2!(params, x0_scaled, sim_dt,idx)
+function update_control_2!(params, x0_scaled, sim_dt,idx; verbose = false)
 
     σ̇ = 0.0
+    qp_iters = 0
     if params.state == :nominal
         dts = [params.U[i][2] for i = 1:length(params.U)]
         tf = sum(dts)
@@ -306,27 +307,29 @@ function update_control_2!(params, x0_scaled, sim_dt,idx)
         σ̇ = params.U[1][1]
     end
 
-    if params.state != :coast
-        if rem(idx-1,7)==0
-            @printf "iter    state     altitude    N_mpc     dt     qp_iter    miss        d_left\n"
-            @printf "----------------------------------------------------------------------------\n"
+    if verbose
+        if params.state != :coast
+            if rem(idx-1,7)==0
+                @printf "iter    state     altitude    N_mpc     dt     qp_iter    miss        d_left\n"
+                @printf "----------------------------------------------------------------------------\n"
+            end
+            alt = alt_from_x(params.ev, x0_scaled)/1000
+            md = params.ev.scale.dscale*norm(params.X[end][1:3] - params.x_desired[1:3])/1e3
+            d_left = params.ev.scale.dscale*norm(x0_scaled[1:3] - params.x_desired[1:3])/1e3
+            @printf("%4d    %-7s   %6.2f      %3d      %5.2f  %3d       %6.2f     %6.2f\n",
+              idx, String(params.state), alt, params.N_mpc, params.u_desired[2], qp_iters, md, d_left)
+        else
+            if rem(idx-1,7)==0
+                @printf "iter    state     altitude    N_mpc     dt     qp_iter    miss        d_left\n"
+                @printf "----------------------------------------------------------------------------\n"
+            end
+            alt = alt_from_x(params.ev, x0_scaled)/1000
+            md = NaN
+            d_left = params.ev.scale.dscale*norm(x0_scaled[1:3] - params.x_desired[1:3])/1e3
+            @printf("%4d    %-7s   %6.2f      %3d      %5.2f  %3d       %6.2f     %6.2f\n",
+              idx, String(params.state), alt, NaN, NaN, NaN, NaN, d_left)
         end
-        alt = alt_from_x(params.ev, x0_scaled)/1000
-        md = params.ev.scale.dscale*norm(params.X[end][1:3] - params.x_desired[1:3])/1e3
-        d_left = params.ev.scale.dscale*norm(x0_scaled[1:3] - params.x_desired[1:3])/1e3
-        @printf("%4d    %-7s   %6.2f      %3d      %5.2f  %3d       %6.2f     %6.2f\n",
-          idx, String(params.state), alt, params.N_mpc, params.u_desired[2], qp_iters, md, d_left)
-    else
-        if rem(idx-1,7)==0
-            @printf "iter    state     altitude    N_mpc     dt     qp_iter    miss        d_left\n"
-            @printf "----------------------------------------------------------------------------\n"
-        end
-        alt = alt_from_x(params.ev, x0_scaled)/1000
-        md = NaN
-        d_left = params.ev.scale.dscale*norm(x0_scaled[1:3] - params.x_desired[1:3])/1e3
-        @printf("%4d    %-7s   %6.2f      %3d      %5.2f  %3d       %6.2f     %6.2f\n",
-          idx, String(params.state), alt, NaN, NaN, NaN, NaN, d_left)
     end
 
-    return σ̇
+    return σ̇, qp_iters
 end

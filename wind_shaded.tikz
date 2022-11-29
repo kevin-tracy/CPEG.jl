@@ -4,8 +4,8 @@
 %  http://www.mathworks.com/matlabcentral/fileexchange/22022-matlab2tikz-matlab2tikz
 %where you can also make suggestions and rate matlab2tikz.
 %
-\definecolor{mycolor1}{rgb}{0.81961,0.48627,0.19608}%
-\definecolor{mycolor2}{rgb}{0.19608,0.67451,0.81961}%
+\definecolor{mycolor1}{rgb}{1.00000,0.68627,0.28627}%
+\definecolor{mycolor2}{rgb}{0.00784,0.29412,0.47059}%
 %
 \begin{tikzpicture}
 
@@ -27,7 +27,7 @@ axis x line*=bottom,
 axis y line*=left,
 legend style={at={(0.03,0.97)}, anchor=north west, legend cell align=left, align=left, fill=none, draw=none}
 ]
-\addplot [color=mycolor1, line width=1.5pt, forget plot]
+\addplot [color=mycolor1, line width=1.0pt, forget plot]
   table[row sep=crcr]{%
 4	10\\
 3	11\\
@@ -121,7 +121,7 @@ legend style={at={(0.03,0.97)}, anchor=north west, legend cell align=left, align
 -25	99\\
 -22	100\\
 };
-\addplot [color=mycolor1, line width=1.5pt, forget plot]
+\addplot [color=mycolor1, line width=1.0pt, forget plot]
   table[row sep=crcr]{%
 18	10\\
 17	11\\
@@ -215,7 +215,7 @@ legend style={at={(0.03,0.97)}, anchor=north west, legend cell align=left, align
 30	99\\
 27	100\\
 };
-\addplot [color=mycolor2, line width=1.5pt, forget plot]
+\addplot [color=mycolor2, line width=1.0pt, forget plot]
   table[row sep=crcr]{%
 -8	10\\
 -8	11\\
@@ -309,7 +309,7 @@ legend style={at={(0.03,0.97)}, anchor=north west, legend cell align=left, align
 -40	99\\
 -39	100\\
 };
-\addplot [color=mycolor2, line width=1.5pt, forget plot]
+\addplot [color=mycolor2, line width=1.0pt, forget plot]
   table[row sep=crcr]{%
 5	10\\
 6	11\\
@@ -777,7 +777,7 @@ x	y\\
 6.12391088756309	11\\
 5.24890412649119	10\\
 }--cycle;
-\addplot [color=black, dashed, line width=1.0pt, forget plot]
+\addplot [color=black, dotted, line width=1.0pt, forget plot]
   table[row sep=crcr]{%
 0	10\\
 0	100\\

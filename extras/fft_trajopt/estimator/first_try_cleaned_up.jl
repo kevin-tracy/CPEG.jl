@@ -93,6 +93,15 @@ function initialize_kf(ev, sim_dt, N, μ0, Σ0)
     return μ,F,kf_sys,Y
 end
 
+function backtrack_linear(params,x_old,x_new)
+    alt1 = alt_from_x(params.ev,x_old)
+    alt2 = alt_from_x(params.ev,x_new)
+    alt_t = alt_from_x(params.ev,params.x_desired)
+    tt = (alt_t - alt1) / (alt2 - alt1)
+    xt = x_old*(1 - tt) + tt*x_new
+    return xt
+end
+
 let
 
     # let's run some MPC
@@ -148,8 +157,8 @@ let
     wE_spline = Spline1D(reverse(altitudes), reverse(1*Ewind))
     wN_spline = Spline1D(reverse(altitudes), reverse(1*Nwind))
     reg = 10.0
-    X = [zeros(nx) for i = 1:10]
-    U =[zeros(nu) for i = 1:10]
+    _X = [zeros(nx) for i = 1:10]
+    _U =[zeros(nu) for i = 1:10]
 
     params = Params(
                     ρ_spline,
@@ -160,7 +169,7 @@ let
                     u_min,u_max,x_min,x_max,
                     δu_min, δu_max,δx_min,δx_max,
                     x_desired, u_desired,
-                    ev, reg, X, U,
+                    ev, reg, _X, _U,
                     :nominal,
                     Dict(:nominal => true, :terminal => false, :coast => false),
                     10,1.0)
@@ -175,7 +184,7 @@ let
     sim_dt = 0.2
     X = [zeros(7) for i = 1:N]
     X[1] = x0_scaled
-    U = [zeros(2) for i = 1:N-1]
+    U = zeros(N-1)
     kρ_est = ones(N)
     α = 0.3
     kρ_est[1] = 1
@@ -185,14 +194,21 @@ let
 
     u = SA[0.0]
 
+    xt = 1*x0_scaled
+
+    qp_iters = zeros(0)
+
     for i = 1:(N-1)
 
         # update kρ from estimator
         params.kρ=kρ_est[i]
 
         if rem((i-1)*sim_dt, 1.0) == 0 # if it's time to update cpeg control
-            u = SA[update_control_2!(params, X[i], sim_dt,i)]
+            u_cpeg, qp_iters_i = update_control_2!(params, X[i], sim_dt,i)
+            push!(qp_iters,qp_iters_i)
+            u = SA[u_cpeg]
         end
+        U[i]=u[1]
 
         X[i+1] = real_discrete_dynamics(ev,SVector{7}(X[i][1:7]),u,sim_dt/ev.scale.tscale,params)
         Y[i+1] = X[i+1][1:7] + kf_sys.ΓR*randn(7)
@@ -211,13 +227,15 @@ let
         # check sim termination
         if alt_from_x(ev,X[i+1]) < alt_from_x(ev,params.x_desired[1:3])
             @info "SIM IS DONE"
-            rr = normalize(params.x_desired[1:3])
-            md = norm((I - rr*rr')*(X[i+1][1:3] - params.x_desired[1:3])*ev.scale.dscale/1e3)
-            @info "miss distance is: $md km"
+            xt = backtrack_linear(params,X[i],X[i+1])
             X = X[1:(i+1)]
+            X[end] = xt
             U = U[1:i]
             μ = μ[1:(i+1)]
             kρ_est = kρ_est[1:(i+1)]
+            rr = normalize(params.x_desired[1:3])
+            md = norm((I - rr*rr')*(X[i+1][1:3] - params.x_desired[1:3])*ev.scale.dscale/1e3)
+            @info "miss distance is: $md km"
             break
         end
 
@@ -230,36 +248,72 @@ let
     # 2. option 2 is just call update_control! when it is time to update the
     # control (right now I vote for option 2)
     # @show μ
-    N = length(X)
-    kρ_true = [calc_kρ(params,X[i]) for i = 1:N]
+    # N = length(X)
+    # kρ_true = [calc_kρ(params,X[i]) for i = 1:N]
+    #
+    #
+    # alts = [alt_from_x(ev, X[i]) for i = 1:N]
+    #
+    # mat"
+    # figure
+    # hold on
+    # title('krho')
+    # plot($kρ_true)
+    # plot($kρ_est)
+    # legend('krho true','krho estimator')
+    # hold off
+    # "
 
+    Xsim = X
+    Usim = U
+    alt1, dr1, cr1, σ1, r1, v1 = process_ev_run_2(ev,Xsim,Usim)
+    alt_g, dr_g, cr_g = cp.postprocess_scaled(ev,[SVector{7}(params.x_desired)],SVector{7}(Xsim[1]))
+    t_vec = (0:(length(X)-1))*sim_dt
 
-    alts = [alt_from_x(ev, X[i]) for i = 1:N]
+    dr_error = dr1[end] - dr_g[1]
+    cr_error = cr1[end] - cr_g[1]
 
     mat"
     figure
     hold on
-    title('krho')
-    plot($kρ_true)
-    plot($kρ_est)
-    legend('krho true','krho estimator')
+    plot($dr1/1000,$cr1/1000)
+    plot($dr_g(1)/1000, $cr_g(1)/1000,'ro')
+    xlabel('downrange (km)')
+    ylabel('crossrange (km)')
+    hold off
+    "
+    mat"
+    figure
+    hold on
+    plot($dr1/1000,$alt1/1000)
+    plot($dr_g(1)/1000, $alt_g(1)/1000, 'ro')
+    xlabel('downrange (km)')
+    ylabel('altitude (km)')
+    hold off
+    "
+    mat"
+    figure
+    hold on
+    title('Controls')
+    plot($t_vec(1:end-1), $U)
+    legend('sigma dot')
+    xlabel('Time (s)')
+    hold off
+    "
+    mat"
+    figure
+    hold on
+    plot($t_vec,rad2deg($σ1))
+    title('Bank Angle')
+    ylabel('Bank Angle (degrees)')
+    xlabel('Time (s)')
     hold off
     "
 
-    # mat"
-    # figure
-    # hold on
-    # plot($alts)
-    # hold off
-    # "
-
-    # @show norm(X2[end][1:3] - X3[end][1:3])*1e3
-    # @show X2 - X
-
-
-    # TODO:
-    #   - give the normal stuff a shot at new frequency
-    #   - do some covariance analysis between these two models
-    #   - try and diagonalize this (eigenstuff?)
-
+    mat"
+    figure
+    title('qp iters')
+    plot($qp_iters)
+    hold off
+    "
 end

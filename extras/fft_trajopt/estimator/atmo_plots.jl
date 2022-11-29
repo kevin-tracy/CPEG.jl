@@ -63,31 +63,96 @@ let
     end
 
 
-    ev_ρ = [cp.density_spline(ev.params.dsp, alt*1000) for alt in ev_alts]
+    ev_ρ = [0.9*cp.density_spline(ev.params.dsp, alt*1000) for alt in ev_alts]
 
-    c1 = [209/255,124/255,50/255]
-    c2 = [50,172,209]/255;
+    # c1 = [209/255,124/255,50/255]
+    c1 = [255,175,73]/255
+    c2 = [2,75,120]/255;
+
+    # kρs = [(ρs[i] ./ ev_ρ) for i = 1:length(ρs)]
+
+    kρs = [((ρs[i] .- ev_ρ) ./ ev_ρ)*100 for i = 1:length(ρs)]
+
+    kρs_max = zeros(length(ev_alts))
+    kρs_min = zeros(length(ev_alts))
+    for i = 1:length(ev_alts)
+
+        E = [kρs[data_iter][i] for data_iter = 1:N_data]
+
+        kρs_min[i] = minimum(E)
+        kρs_max[i] = maximum(E)
+    end
+    # mat"
+    # figure
+    # hold on
+    # plot($ev_ρ, $ev_alts)
+    # rho = $ρs{i}
+    # plot(rho, $ev_alts)
+    # set(gca, 'XScale', 'log')
+    # hold off
+    # "
+
+    fill_y = [ev_alts;reverse(ev_alts)]
+    fill_x = [kρs_min;reverse(kρs_max)]
+
     mat"
     figure
     hold on
-    for i = 1:100
-        x1 = $Ewinds{i};
-        x2 = $Nwinds{i};
-        plot(x1,$ev_alts,'color',$c1)
-        plot(x2,$ev_alts,'color',$c2)
+    for i = 1 : $N_data
+        krho = $kρs{i};
+        plot(krho,$ev_alts,'k')
     end
-    plot([0,0],[10,100],'k--','linewidth',2);
-    p1 = plot([],[],'color',$c1);
-    p2 = plot([],[],'color',$c2);
-    legend([p1,p2],'East','North','location','northwest')
-    xlabel('Wind Velocity, m/s')
-    ylabel('Altitude, km')
+    xlabel('Density Error, %')
+    xlim([-60,60])
     ylim([10,100])
-    legend boxoff
+    ylabel('Altitude, km')
+    p1 = plot([0,0],[0,0])
+    legend(p1,'REMOVE THIS')
     hold off
-    %addpath('/Users/kevintracy/devel/GravNav/matlab2tikz-master/src')
-    %matlab2tikz('test.tikz')
+    addpath('/Users/kevintracy/devel/GravNav/matlab2tikz-master/src')
+    matlab2tikz('density.tikz')
     "
+    mat"
+    figure
+    hold on
+    P1 = fill($fill_x,$fill_y,'k');
+    %P1.FaceColor = $c1
+    %P1.EdgeColor = $c1
+    %xlim([0.3,1.7])
+    P1.FaceAlpha = 0.3
+    plot([0,0],[10,100],'k:','linewidth',1);
+    xlabel('Density Error, %')
+    xlim([-60,60])
+    ylim([10,100])
+    ylabel('Altitude, km')
+    p1 = plot([0,0],[0,0])
+    legend(p1,'REMOVE THIS')
+    hold off
+    addpath('/Users/kevintracy/devel/GravNav/matlab2tikz-master/src')
+    matlab2tikz('density_shaded.tikz')
+    "
+
+    # mat"
+    # figure
+    # hold on
+    # for i = 1:100
+    #     x1 = $Ewinds{i};
+    #     x2 = $Nwinds{i};
+    #     plot(x1,$ev_alts,'color',$c1)
+    #     plot(x2,$ev_alts,'color',$c2)
+    # end
+    # plot([0,0],[10,100],'k--','linewidth',2);
+    # p1 = plot([],[],'color',$c1);
+    # p2 = plot([],[],'color',$c2);
+    # legend([p1,p2],'East','North','location','northwest')
+    # xlabel('Wind Velocity, m/s')
+    # ylabel('Altitude, km')
+    # ylim([10,100])
+    # legend boxoff
+    # hold off
+    # %addpath('/Users/kevintracy/devel/GravNav/matlab2tikz-master/src')
+    # %matlab2tikz('test.tikz')
+    # "
 
     Ewind_min = zeros(length(ev_alts))
     Ewind_max = zeros(length(ev_alts))
@@ -110,10 +175,10 @@ let
     mat"
     figure
     hold on
-    plot($Ewind_min, $ev_alts, 'color',$c1,'linewidth',1.5)
-    plot($Ewind_max, $ev_alts, 'color',$c1,'linewidth',1.5)
-    plot($Nwind_min, $ev_alts, 'color',$c2,'linewidth',1.5)
-    plot($Nwind_max, $ev_alts, 'color',$c2,'linewidth',1.5)
+    plot($Ewind_min, $ev_alts, 'color',$c1,'linewidth',1.0)
+    plot($Ewind_max, $ev_alts, 'color',$c1,'linewidth',1.0)
+    plot($Nwind_min, $ev_alts, 'color',$c2,'linewidth',1.0)
+    plot($Nwind_max, $ev_alts, 'color',$c2,'linewidth',1.0)
     P1 = fill($fill_x1,$fill_y,'g')
     P1.FaceColor = $c1
     P1.EdgeColor = $c1
@@ -122,7 +187,7 @@ let
     P2.FaceColor = $c2
     P2.EdgeColor = $c2
     P2.FaceAlpha = 0.3
-    plot([0,0],[10,100],'k--','linewidth',1);
+    plot([0,0],[10,100],'k:','linewidth',1);
     p1 = plot([0,0],[0,0],'color',$c1);
     p2 = plot([0,0],[0,0],'color',$c2);
     legend([p1,p2],'East','North','location','northwest')

@@ -13,7 +13,7 @@ function approx_dynamics(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W},
     h,_,_ = cp.altitude(ev.params.gravity, r)
     # @show h
     # @show cp.density_spline(ev.params.dsp, h)
-    ρ = kρ*cp.density_spline(ev.params.dsp, h)
+    ρ = kρ*cp.density_spline(ev.params.dsp, h)*0.9
 
     # lift and drag magnitudes
     L, D = cp.LD_mags(ev.params.aero,ρ,r,v)
