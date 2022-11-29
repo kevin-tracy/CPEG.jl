@@ -82,7 +82,7 @@ function backtrack_linear(params,x_old,x_new)
     return xt
 end
 
-function run_cpeg_sim(path;verbose = false)
+function run_cpeg_sim(path;verbose = false,use_filter=true)
 
     # let's run some MPC
     ev = cp.CPEGWorkspace()
@@ -119,8 +119,8 @@ function run_cpeg_sim(path;verbose = false)
     Qf = 1e8*Diagonal([1.0,1,1,0,0,0,0])
     Qf[7,7] = 1e-4
     R = Diagonal([.1,10.0])
-    x_desired = [3.3477567254291762, 0.626903908492849, 0.03739968529144168, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]
-
+    # x_desired = [3.3477567254291762, 0.626903908492849, 0.03739968529144168, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]
+    x_desired = [3.34795153940262, 0.6269403895311674, 0.008024160056155994, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]
 
     u_min = [-100, 1e-8]
     u_max =  [100, 4.0]
@@ -136,7 +136,8 @@ function run_cpeg_sim(path;verbose = false)
     ρ_spline = Spline1D(reverse(altitudes), reverse(densities))
     wE_spline = Spline1D(reverse(altitudes), reverse(1*Ewind))
     wN_spline = Spline1D(reverse(altitudes), reverse(1*Nwind))
-    reg = 10.0
+    # reg = 10.0
+    reg = 1e-4
     _X = [zeros(nx) for i = 1:10]
     _U =[zeros(nu) for i = 1:10]
 
@@ -181,7 +182,9 @@ function run_cpeg_sim(path;verbose = false)
     for i = 1:(N-1)
 
         # update kρ from estimator
-        params.kρ=kρ_est[i]
+        if use_filter
+            params.kρ=kρ_est[i]
+        end
 
         if rem((i-1)*sim_dt, 1.0) == 0 # if it's time to update cpeg control
             u_cpeg, qp_iters_i = update_control_2!(params, X[i], sim_dt,i;verbose)
@@ -206,7 +209,7 @@ function run_cpeg_sim(path;verbose = false)
 
         # check sim termination
         if alt_from_x(ev,X[i+1]) < alt_from_x(ev,params.x_desired[1:3])
-            @info "SIM IS DONE"
+            # @info "SIM IS DONE"
             xt = backtrack_linear(params,X[i],X[i+1])
             X = X[1:(i+1)]
             X[end] = xt

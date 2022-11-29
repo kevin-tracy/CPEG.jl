@@ -23,7 +23,7 @@ include("/Users/kevintracy/.julia/dev/CPEG/extras/fft_trajopt/estimator/cpeg_sim
 
 # let
 
-datasets = 1:200
+datasets = 1:1000
 N_data = length(datasets)
 alts = [zeros(2) for i = 1:N_data]
 drs =[zeros(2) for i = 1:N_data]
@@ -39,9 +39,10 @@ dr_g = 0.0
 cr_g = 0.0
 
 for i in datasets
+    @show i
     path = "/Users/kevintracy/.julia/dev/CPEG/src/MarsGramDataset/all/out" * string(i) * ".csv"
 
-    alts[i], drs[i], crs[i], σs[i], t_vecs[i], σ̇s[i], dr_errors[i], cr_errors[i], qp_iters[i], alt_g, dr_g, cr_g = run_cpeg_sim(path; verbose = false)
+    alts[i], drs[i], crs[i], σs[i], t_vecs[i], σ̇s[i], dr_errors[i], cr_errors[i], qp_iters[i], alt_g, dr_g, cr_g = run_cpeg_sim(path; verbose = false, use_filter = true)
 end
 
 # mat"
@@ -83,6 +84,26 @@ grid on
 xline(0)
 yline(0)
 legend([p1,p2],'Terminal Error','3 sigma')
+hold off
+"
+
+qp_iters_stacked = filter(!iszero,vcat(qp_iters...))
+mat"
+figure
+hold on
+h1 = histogram($qp_iters_stacked)
+h1.Normalization = 'probability';
+hold off
+"
+
+mat"
+figure
+hold on
+for i = 1:$N_data
+    t = $t_vecs{i}
+    sig = $σs{i}
+    plot(t,rad2deg(sig))
+end
 hold off
 "
 # mat"
