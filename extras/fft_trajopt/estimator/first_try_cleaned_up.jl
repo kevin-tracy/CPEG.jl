@@ -67,7 +67,7 @@ function calc_kρ(params,x)
 
     # altitude
     h,_,_ = cp.altitude(params.ev.params.gravity, r)
-    ρ1 = cp.density_spline(params.ev.params.dsp, h)
+    ρ1 = cp.density_spline(params.ev.params.dsp, h)*0.9
     ρ2 = params.ρ_spline(h)
 
     return ρ2/ρ1
@@ -76,9 +76,10 @@ end
 function initialize_kf(ev, sim_dt, N, μ0, Σ0)
     dscale, tscale = ev.scale.dscale, ev.scale.tscale
 
-    Q = diagm([1e-10*ones(3); 1e-6*ones(3);1e-10;1e-2])
+    # Q = diagm([1e-10*ones(3); 1e-6*ones(3);1e-10;1e-2])
     # Q = diagm([1e-15*ones(3); 1e-8*ones(3);1e-1;1e-4])
-    R = diagm( [(100.0/ev.scale.dscale)^2*ones(3); (0.2/(ev.scale.dscale/ev.scale.tscale))^2*ones(3);1e-8])
+    Q = diagm([1e-15*ones(3); 1e-8*ones(3);1e-1;1e-4])
+    R = diagm( [(100.0/ev.scale.dscale)^2*ones(3)/3; (0.2/(ev.scale.dscale/ev.scale.tscale))^2*ones(3)/3;1e-8])
 
 
     kf_sys = (sim_dt = sim_dt, ΓR = chol(R), ΓQ = chol(Q))
@@ -101,7 +102,10 @@ function backtrack_linear(params,x_old,x_new)
     xt = x_old*(1 - tt) + tt*x_new
     return xt
 end
-
+function v_from_xs(ev,x)
+    r, v = cp.unscale_rv(ev.scale,x[SA[1,2,3]],x[SA[4,5,6]])
+    norm(v)
+end
 let
 
     # let's run some MPC
@@ -139,7 +143,8 @@ let
     Qf = 1e8*Diagonal([1.0,1,1,0,0,0,0])
     Qf[7,7] = 1e-4
     R = Diagonal([.1,10.0])
-    x_desired = [3.3477567254291762, 0.626903908492849, 0.03739968529144168, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]
+    # x_desired = [3.3477567254291762, 0.626903908492849, 0.03739968529144168, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]
+    x_desired = [3.34795153940262, 0.6269403895311674, 0.008024160056155994, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]
 
 
     u_min = [-100, 1e-8]
@@ -154,9 +159,9 @@ let
     u_desired = [0; 2.0]
 
     ρ_spline = Spline1D(reverse(altitudes), reverse(densities))
-    wE_spline = Spline1D(reverse(altitudes), reverse(1*Ewind))
-    wN_spline = Spline1D(reverse(altitudes), reverse(1*Nwind))
-    reg = 10.0
+    wE_spline = Spline1D(reverse(altitudes), reverse(0*Ewind))
+    wN_spline = Spline1D(reverse(altitudes), reverse(0*Nwind))
+    reg = 1e-4
     _X = [zeros(nx) for i = 1:10]
     _U =[zeros(nu) for i = 1:10]
 
@@ -186,7 +191,7 @@ let
     X[1] = x0_scaled
     U = zeros(N-1)
     kρ_est = ones(N)
-    α = 0.3
+    α = 0.0
     kρ_est[1] = 1
     filter_initialized = false
 
@@ -197,6 +202,8 @@ let
     xt = 1*x0_scaled
 
     qp_iters = zeros(0)
+    a =0
+    b = 0
 
     for i = 1:(N-1)
 
@@ -204,7 +211,7 @@ let
         params.kρ=kρ_est[i]
 
         if rem((i-1)*sim_dt, 1.0) == 0 # if it's time to update cpeg control
-            u_cpeg, qp_iters_i = update_control_2!(params, X[i], sim_dt,i)
+            u_cpeg, qp_iters_i = update_control_2!(params, X[i], sim_dt,i; verbose = true)
             push!(qp_iters,qp_iters_i)
             u = SA[u_cpeg]
         end
@@ -213,13 +220,19 @@ let
         X[i+1] = real_discrete_dynamics(ev,SVector{7}(X[i][1:7]),u,sim_dt/ev.scale.tscale,params)
         Y[i+1] = X[i+1][1:7] + kf_sys.ΓR*randn(7)
 
-        if alt_from_x(ev, X[i+1]) < 80e3
+        if alt_from_x(ev, X[i+1]) < 60e3
             if filter_initialized
                 μ[i+1],F[i+1] = sqrkalman_filter(μ[i],F[i],u,Y[i+1],kf_sys,params)
+                α = a*v_from_xs(ev,μ[i+1][1:7]) + b
                 kρ_est[i+1] = (1-α)*μ[i+1][8] + α*kρ_est[i]
             else
                 F[i+1] = 1*F[1]
                 μ[i+1] = [Y[i+1];1]
+                v0 = v_from_xs(ev,μ[i+1][1:7])
+                vt = 400
+                α0 = .0
+                αt = .8
+                a,b = [v0 1;vt 1]\[α0,αt]
                 filter_initialized = true
             end
         end
@@ -232,6 +245,7 @@ let
             X[end] = xt
             U = U[1:i]
             μ = μ[1:(i+1)]
+            F = F[1:(i+1)]
             kρ_est = kρ_est[1:(i+1)]
             rr = normalize(params.x_desired[1:3])
             md = norm((I - rr*rr')*(X[i+1][1:3] - params.x_desired[1:3])*ev.scale.dscale/1e3)
@@ -248,72 +262,118 @@ let
     # 2. option 2 is just call update_control! when it is time to update the
     # control (right now I vote for option 2)
     # @show μ
-    # N = length(X)
-    # kρ_true = [calc_kρ(params,X[i]) for i = 1:N]
-    #
-    #
-    # alts = [alt_from_x(ev, X[i]) for i = 1:N]
-    #
+    N = length(X)
+    kρ_true = [calc_kρ(params,X[i]) for i = 1:N]
+
+
+    alts = [alt_from_x(ev, X[i]) for i = 1:N]
+
+    Σ = [Fi'*Fi for Fi in F]
+    three_σ = [3*sqrt(Σi[8,8]) for Σi in Σ]
+
+
+    alts = round.(alts;digits = 4)
+    fill_x = [(kρ_est - three_σ); reverse(kρ_est + three_σ)]
+    fill_y = [alts/1000; reverse(alts/1000)]
+
+
+    c2 = [255,175,73]/255
+    c1 = [2,75,120]/255;
+    mat"
+    figure
+    hold on
+    k1 = plot(round($kρ_true,3),$alts/1000,'linewidth',1);
+    k1.Color = 'black'
+    kk=plot(round($kρ_est,3),$alts/1000,'r--','linewidth',1);
+    %kk.Color = $c2
+    ggg = fill(round($fill_x,3),round($fill_y,3),'r');
+    %ggg.FaceColor = $c2
+    ggg.FaceAlpha = 0.1;
+    ggg.EdgeAlpha = 0.0;
+    xlabel('rho/rho hat')
+    ylabel('Altitude, km')
+    xlim([.7,1.3])
+    ylim([10,60])
+    legend('krho true','krho estimator','3 sigma','location','southwest')
+    legend boxoff
+    hold off
+    addpath('/Users/kevintracy/devel/GravNav/matlab2tikz-master/src')
+    matlab2tikz('krho.tikz')
+    "
+
+    # @show length(three_σ)
+    # @show typeof(three_σ)
+    # @show length(kρ_est)
+    # @show typeof(kρ_est)
+    # @show size(μ)
+    # @show size(F)
     # mat"
     # figure
     # hold on
     # title('krho')
     # plot($kρ_true)
     # plot($kρ_est)
+    # plot($kρ_est + $three_σ,'r')
+    # plot($kρ_est - $three_σ,'r')
     # legend('krho true','krho estimator')
     # hold off
     # "
-
-    Xsim = X
-    Usim = U
-    alt1, dr1, cr1, σ1, r1, v1 = process_ev_run_2(ev,Xsim,Usim)
-    alt_g, dr_g, cr_g = cp.postprocess_scaled(ev,[SVector{7}(params.x_desired)],SVector{7}(Xsim[1]))
-    t_vec = (0:(length(X)-1))*sim_dt
-
-    dr_error = dr1[end] - dr_g[1]
-    cr_error = cr1[end] - cr_g[1]
-
-    mat"
-    figure
-    hold on
-    plot($dr1/1000,$cr1/1000)
-    plot($dr_g(1)/1000, $cr_g(1)/1000,'ro')
-    xlabel('downrange (km)')
-    ylabel('crossrange (km)')
-    hold off
-    "
-    mat"
-    figure
-    hold on
-    plot($dr1/1000,$alt1/1000)
-    plot($dr_g(1)/1000, $alt_g(1)/1000, 'ro')
-    xlabel('downrange (km)')
-    ylabel('altitude (km)')
-    hold off
-    "
-    mat"
-    figure
-    hold on
-    title('Controls')
-    plot($t_vec(1:end-1), $U)
-    legend('sigma dot')
-    xlabel('Time (s)')
-    hold off
-    "
-    mat"
-    figure
-    hold on
-    plot($t_vec,rad2deg($σ1))
-    title('Bank Angle')
-    ylabel('Bank Angle (degrees)')
-    xlabel('Time (s)')
-    hold off
-    "
-
-    mat"
-    figure
-    title('qp iters')
-    plot($qp_iters)
-    hold off
-    "
+    #
+    # # kρ_true_v2 = [params.ρ_spline(h)/cp.density_spline(params.ev.params.dsp, h)*0.9 for h in alts]
+    # # ρ2 = params.ρ_spline(h)
+    # #
+    # # return ρ2/ρ1]
+    #
+    # Xsim = X
+    # Usim = U
+    # alt1, dr1, cr1, σ1, r1, v1 = process_ev_run_2(ev,Xsim,Usim)
+    # alt_g, dr_g, cr_g = cp.postprocess_scaled(ev,[SVector{7}(params.x_desired)],SVector{7}(Xsim[1]))
+    # t_vec = (0:(length(X)-1))*sim_dt
+    #
+    # dr_error = dr1[end] - dr_g[1]
+    # cr_error = cr1[end] - cr_g[1]
+    #
+    # mat"
+    # figure
+    # hold on
+    # plot($dr1/1000,$cr1/1000)
+    # plot($dr_g(1)/1000, $cr_g(1)/1000,'ro')
+    # xlabel('downrange (km)')
+    # ylabel('crossrange (km)')
+    # hold off
+    # "
+    # mat"
+    # figure
+    # hold on
+    # plot($dr1/1000,$alt1/1000)
+    # plot($dr_g(1)/1000, $alt_g(1)/1000, 'ro')
+    # xlabel('downrange (km)')
+    # ylabel('altitude (km)')
+    # hold off
+    # "
+    # mat"
+    # figure
+    # hold on
+    # title('Controls')
+    # plot($t_vec(1:end-1), $U)
+    # legend('sigma dot')
+    # xlabel('Time (s)')
+    # hold off
+    # "
+    # mat"
+    # figure
+    # hold on
+    # plot($t_vec,rad2deg($σ1))
+    # title('Bank Angle')
+    # ylabel('Bank Angle (degrees)')
+    # xlabel('Time (s)')
+    # hold off
+    # "
+    #
+    # mat"
+    # figure
+    # title('qp iters')
+    # plot($qp_iters)
+    # hold off
+    # "
 end

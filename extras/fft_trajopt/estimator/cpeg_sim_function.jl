@@ -58,7 +58,7 @@ function initialize_kf(ev, sim_dt, N, μ0, Σ0)
 
     Q = diagm([1e-10*ones(3); 1e-6*ones(3);1e-10;1e-2])
     # Q = diagm([1e-15*ones(3); 1e-8*ones(3);1e-1;1e-4])
-    R = diagm( [(100.0/ev.scale.dscale)^2*ones(3); (0.2/(ev.scale.dscale/ev.scale.tscale))^2*ones(3);1e-8])
+    R = diagm( [(100.0/ev.scale.dscale)^2*ones(3)/3; (0.2/(ev.scale.dscale/ev.scale.tscale))^2*ones(3)/3;1e-8])
 
 
     kf_sys = (sim_dt = sim_dt, ΓR = chol(R), ΓQ = chol(Q))
@@ -100,7 +100,9 @@ function run_cpeg_sim(path;verbose = false,use_filter=true)
     ev.scale.uscale = 1e1
 
     # initial condition
-    x0_scaled = [3.5212,0,0, -1.559452236319901, 5.633128235948198,0,0.05235987755982989]
+    x0_scaled = [3.5212,0,0, -1.559452236319901, 5.633128235948198,0,deg2rad(3)]
+    x0_scaled[1:3] += randn()*normalize(randn(3))/ev.scale.dscale
+    x0_scaled[7] += deg2rad(5*randn())
 
     # # get atmosphere stuff in params
     # altitudes,densities, Ewind, Nwind = load_atmo()
@@ -121,7 +123,6 @@ function run_cpeg_sim(path;verbose = false,use_filter=true)
     R = Diagonal([.1,10.0])
     # x_desired = [3.3477567254291762, 0.626903908492849, 0.03739968529144168, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]
     x_desired = [3.34795153940262, 0.6269403895311674, 0.008024160056155994, -0.255884401134421, 0.33667198108223073, -0.056555916829042985, -1.182682624917629]
-
     u_min = [-100, 1e-8]
     u_max =  [100, 4.0]
     δu_min = [-100,-.3]

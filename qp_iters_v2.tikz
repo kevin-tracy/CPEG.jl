@@ -1,0 +1,52 @@
+% This file was created by matlab2tikz.
+%
+%The latest updates can be retrieved from
+%  http://www.mathworks.com/matlabcentral/fileexchange/22022-matlab2tikz-matlab2tikz
+%where you can also make suggestions and rate matlab2tikz.
+%
+\definecolor{mycolor1}{rgb}{0.00000,0.44700,0.74100}%
+%
+\begin{tikzpicture}
+
+\begin{axis}[%
+width=6.028in,
+height=4.754in,
+at={(1.011in,0.642in)},
+scale only axis,
+xmin=-0.200000000000001,
+xmax=15.2,
+xtick={ 1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11},
+xlabel style={font=\color{white!15!black}},
+xlabel={QP Solver Iterations},
+ymin=0,
+ymax=1,
+ytick={0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1},
+ylabel style={font=\color{white!15!black}},
+ylabel={Percentage},
+axis background/.style={fill=white},
+axis x line*=bottom,
+axis y line*=left,
+legend style={legend cell align=left, align=left, draw=white!15!black}
+]
+\addplot[ybar interval, fill=mycolor1, fill opacity=0.6, draw=black, area legend] table[row sep=crcr] {%
+x	y\\
+0.5	0.940709522438635\\
+1.5	0\\
+2.5	0\\
+3.5	0\\
+4.5	8.49501389878663e-05\\
+5.5	3.77556173279406e-05\\
+6.5	0.000580492616417086\\
+7.5	0.0160083817470468\\
+8.5	0.0172212809537069\\
+9.5	0.0189438809942942\\
+10.5	0.00614000726795634\\
+11.5	0.000250130964797606\\
+12.5	1.88778086639703e-05\\
+13.5	4.71945216599257e-06\\
+14.5	4.71945216599257e-06\\
+};
+\addlegendentry{$\text{matlab}_\text{j}\text{l}_\text{2}$}
+
+\end{axis}
+\end{tikzpicture}%
