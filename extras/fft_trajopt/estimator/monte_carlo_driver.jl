@@ -46,11 +46,11 @@ for i in datasets
     @show i
     path = "/Users/kevintracy/.julia/dev/CPEG/src/MarsGramDataset/all/out" * string(i) * ".csv"
 
-    alts[i], drs[i], crs[i], σs[i], t_vecs[i], σ̇s[i], dr_errors[i], cr_errors[i], qp_iters[i], _,_,_ = run_cpeg_sim(path; verbose = false, use_filter = false)
+    alts[i], drs[i], crs[i], σs[i], t_vecs[i], σ̇s[i], dr_errors[i], cr_errors[i], qp_iters[i], _,_,_ = run_cpeg_sim(path; verbose = false, use_filter = true)
 end
 
-# using JLD2
-# jldsave("mc_1000_v3.jld2"; alts, drs, crs, σs, t_vecs, σ̇s, dr_errors, cr_errors, qp_iters, alt_g, dr_g, cr_g)
+using JLD2
+jldsave("mc_1000_v4.jld2"; alts, drs, crs, σs, t_vecs, σ̇s, dr_errors, cr_errors, qp_iters, alt_g, dr_g, cr_g)
 
 
 # -------------DR ALT---------------------
