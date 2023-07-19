@@ -20,7 +20,7 @@ function dynamics(ev::CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}) where {T,
     vₙ = v'uN  # m / s
     vₑ = v'uE  # m / s
     # density
-    ρ = density_spline(ev.params.density, h)
+    ρ = density_spline(ev.params.dsp, h)
     wE, wN, wU = wind_spline(ev.params.density,h)
 
     # wE positive to the east , m / s, wN positive to the north , m / s, wU positive up , m / s

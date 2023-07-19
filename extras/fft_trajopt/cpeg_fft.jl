@@ -6,9 +6,12 @@
 # using StaticArrays
 # # using FiniteDiff
 # using MATLAB
-cd("/Users/kevintracy/.julia/dev/CPEG")
-Pkg.activate(".")
-cd("/Users/kevintracy/.julia/dev/CPEG/src")
+using Pkg
+Pkg.activate(joinpath(dirname(@__DIR__), ".."))
+import CPEG as cp
+Pkg.activate(dirname(@__DIR__))
+Pkg.instantiate()
+
 using LinearAlgebra
 using StaticArrays
 using ForwardDiff
@@ -16,16 +19,8 @@ import ForwardDiff as FD
 using SparseArrays
 using SuiteSparse
 using Printf
-
-include("qp_solver.jl")
-include("atmosphere.jl")
-include("scaling.jl")
-include("gravity.jl")
-include("aero_forces.jl")
-include("vehicle.jl")
-include("dynamics.jl")
-include("post_process.jl")
-include("qp_solver.jl")
+using MATLAB
+import Random
 
 using LinearAlgebra
 using StaticArrays
@@ -52,7 +47,6 @@ function mpc_quad1(params::NamedTuple, A,B,X,U; verbose = true, atol = 1e-6, con
     b_eq = zeros((N)*nx) # N-1 dynamics constraints + N IC constraint
 
     # dynamics constraint (equality)
-
     idx_c = [(i-1)*(nx) .+ (1:nx) for i = 1:(N-1)]
     for i = 1:(N-1)
         A_eq[idx_c[i],idx_x[i]]   = A[i]
@@ -61,30 +55,12 @@ function mpc_quad1(params::NamedTuple, A,B,X,U; verbose = true, atol = 1e-6, con
     end
     A_eq[(N-1)*nx .+ (1:nx), idx_x[1]] = I(nx)
 
-    if constrain
-        A_term = spzeros(3,nz)
-        A_term[:,idx_x[N][1:3]] = I(3)
-        b_term = params.Xref[N][1:3] - X[N][1:3]
-
-        A_eq = [A_eq;A_term]
-        b_eq = [b_eq;b_term]
-    end
-
-    # state constraints on δσ (inequality)
-    # σ_max =  pi
-    # σ_min = -σ_max
-    # δσ_max =  deg2rad(20)
-    # δσ_min =  -δσ_max
-    #
-    # dt_max = 3.0
-    # dt_min = 1.0
-    # δdt_max =  0.2
-    # δdt_min = -δdt_max
-
-
+    # inequality constraints
     G = spzeros(2*(2*N - 1),nz)
     h = spzeros(2*(2*N - 1),nz)
 
+    # put state and control bounds based on trust region or limits
+    # (whichever comes first)
     G=sparse([I(nz);-I(nz)])
     z_max = zeros(nz)
     z_min = zeros(nz)
@@ -97,32 +73,6 @@ function mpc_quad1(params::NamedTuple, A,B,X,U; verbose = true, atol = 1e-6, con
         z_min[idx_u[i]] = max.(params.δu_min, params.u_min - U[i])
     end
     h = [z_max;-z_min]
-    # for i = 1:N # N of these
-    #     # δσ ≦ min(δσ_max, σ_max - σ)
-    #     G[i,idx_x[i][7]] = 1.0
-    #     σ = X[i][7]
-    #     h[i] = min(δσ_max, σ_max - σ)
-    # end
-    # for i = (N + 1):(2 * N - 1)  # N - 1 of these
-    #     # δdt ≦ min(δdt_max, dt_max - dt)
-    #     G[i,idx_u[i][2]] = 1.0
-    #     dt = U[i][2]
-    #     h[i] = min(δdt_max, dt_max - dt)
-    # end
-    # for i = (2 * N):(2 * N + N - 1)  # N of these
-    #     # -δσ ≦ min(-δσ_min, -(σ_min - σ))
-    #     G[i,idx_x[i][7]] = -1.0
-    #     σ = X[i][7]
-    #     h[i] = min(-δσ_min, -(σ_min - σ))
-    # end
-    # for i = (3*N):(3*N + N - 2)
-    #     # -δdt ≦ min(-δdt_min, -(dt_min - dt))
-    #     G[i,idx_u[i][2]] = -1.0
-    #     dt = U[i][2]
-    #     h[i] = min(-δdt_min, -(dt_min - dt))
-    # end
-
-    # constraint bounds
 
     # cost function terms
     P = spzeros(nz,nz)
@@ -137,28 +87,108 @@ function mpc_quad1(params::NamedTuple, A,B,X,U; verbose = true, atol = 1e-6, con
     P[idx_x[N],idx_x[N]] = params.Qf
     q[idx_x[N]] = params.Qf*(X[N] - params.Xref[N])
 
-    z, qp_iters = quadprog(P,q,A_eq,b_eq,G,h; verbose = verbose,atol = atol,max_iters = 30)
+    # TODO: maybe regularize
+    P += params.reg*I
 
+    # solve the equality only constrained QP
+    # sol = lu([P A_eq';A_eq -params.reg*I(N*nx)])\[-q;b_eq]
+    sol = lu([P A_eq';A_eq spzeros(N*nx,N*nx)])\[-q;b_eq]
+    z = sol[1:length(q)]
+    qp_iters = 1
+
+    # if this violates the inequality constraints, then we send it to quadprog
+    # if sum(G*z .> h) != 0
+    if !all(G*z .<= h)
+        z, qp_iters = cp.quadprog(P,q,A_eq,b_eq,G,h; verbose = verbose,atol = atol,max_iters = 30)
+    end
 
     # pull out δx and δu from z
     δx = [z[idx_x[i]] for i = 1:(N)]
     δu = [z[idx_u[i]] for i = 1:(N-1)]
 
 
-    return δu
+    return δu, qp_iters
 end
 
+function dynamics_fudge(ev::cp.CPEGWorkspace, x::SVector{7,T}, u::SVector{1,W}, kρ::T2) where {T,W,T2}
+
+    # scaled variables
+    r_scaled = x[SA[1,2,3]]
+    v_scaled = x[SA[4,5,6]]
+    σ = x[7]
+
+    # unscale
+    r, v = cp.unscale_rv(ev.scale,r_scaled,v_scaled)
+
+    # altitude
+    h,_,_ = cp.altitude(ev.params.gravity, r)
+    # @show typeof(r)
+    # @show typeof(h)
+
+    # density
+    # ρ = kρ*cp.density(ev.params.density, h)
+    # if typeof(ρ) != typeof(h)
+    #     @show typeof(ρ)
+    #     @show typeof(h)
+    #     @info "error 1"
+    #     error()
+    # end
+    ρ = kρ*cp.density_spline(ev.params.dsp, h)
+    # ρ = densisty_solin
+    # if typeof(ρ) != typeof(ρ2)
+    #     @show typeof(h)
+    #     @show typeof(ρ)
+    #     @show typeof(ρ2)
+    #     @info "error 2"
+    #     error()
+    # end
+    # @show typeof(ρ)
+    # @show eltype(r)
+    # @show eltype(v)
+
+    # lift and drag magnitudes
+    L, D = cp.LD_mags(ev.params.aero,ρ,r,v)
+
+    # basis for e frame
+    e1, e2 = cp.e_frame(r,v)
+
+    # drag and lift accelerations
+    D_a = -(D/norm(v))*v
+    L_a = L*sin(σ)*e1 + L*cos(σ)*e2
+
+    # gravity
+    g = cp.gravity(ev.params.gravity,r)
+
+    # acceleration
+    ω = ev.planet.ω
+    a = D_a + L_a + g - 2*cross(ω,v) - cross(ω,cross(ω,r))
+
+    # rescale units
+    v,a = cp.scale_va(ev.scale,v,a)
+
+    return SA[v[1],v[2],v[3],a[1],a[2],a[3],u[1]*ev.scale.uscale]
+end
+
+function rk4_fudge(
+    ev::cp.CPEGWorkspace,
+    x_n::SVector{7,T},
+    u::SVector{1,W},
+    dt_s::T2, kρ::T3) where {T,W,T2,T3}
+
+    k1 = dt_s*dynamics_fudge(ev,x_n,u,kρ)
+    k2 = dt_s*dynamics_fudge(ev,x_n+k1/2,u,kρ)
+    k3 = dt_s*dynamics_fudge(ev,x_n+k2/2,u,kρ)
+    k4 = dt_s*dynamics_fudge(ev,x_n+k3,u,kρ)
+
+    return (x_n + (1/6)*(k1 + 2*k2 + 2*k3 + k4))
+end
 
 function discrete_dynamics(p::NamedTuple,x,u,k)
-    dt = u[2]
-    rk4(p.ev,SVector{7}(x),SA[u[1]],dt/p.ev.scale.tscale)
+    rk4_fudge(p.ev,SVector{7}(x),SA[u[1]],u[2]/p.ev.scale.tscale, 1.0);
 end
 
 function jacobs(params::NamedTuple,X,U)
     N = length(X)
-    # A = [ForwardDiff.jacobian(_x->rk4(p.ev,SVector{7}(_x),  SA[U[i][1]],U[i][2]/p.ev.scale.tscale), X[i]) for i = 1:N-1]
-    # B = [ForwardDiff.jacobian(_u->rk4(p.ev,SVector{7}(X[i]),SA[_u[1]],    _u[2]/p.ev.scale.tscale), U[i]) for i = 1:N-1]
-    # A,B
     A = [FD.jacobian(_x -> discrete_dynamics(params,_x,U[k],k),X[k]) for k = 1:N-1]
     B = [FD.jacobian(_u -> discrete_dynamics(params,X[k],_u,k),U[k]) for k = 1:N-1]
     A,B
@@ -182,7 +212,7 @@ let
     ncx = 2*nx
     ncu = 2*nu
 
-    ev = CPEGWorkspace()
+    ev = cp.CPEGWorkspace()
 
     # vehicle parameters
     ev.params.aero.Cl = 0.29740410453983374
@@ -208,8 +238,8 @@ let
 
     u_min = [-100, .5]
     u_max =  [100, 4]
-    δu_min = [-100,-.1]
-    δu_max = [100, 0.1]
+    δu_min = [-100,-.2]
+    δu_max = [100, 0.2]
 
     x_min = [-1e3*ones(6); -pi]
     x_max = [1e3*ones(6);   pi]
@@ -237,7 +267,8 @@ let
         Xref = Xref,
         Uref = Uref,
         dt = dt,
-        ev = ev
+        ev = ev,
+        reg = 1e-4
     );
 
 
@@ -258,15 +289,15 @@ let
         A,B = jacobs(params,X,U)
 
         # solve MPC
-        δu = mpc_quad1(params, A,B,X,U; verbose = false, atol = 1e-10, constrain = constrain)
+        δu, qp_iters = mpc_quad1(params, A,B,X,U; verbose = true, atol = 1e-10, constrain = constrain)
         md = norm(X[N][1:3] - xg[1:3])*ev.scale.dscale/1000
-        if md < 5
-            @info "constrained"
-            constrain = true
-            params.Qf .= 1*params.Q
-        end
+        # if md < 5
+        #     @info "constrained"
+        #     constrain = true
+        #     params.Qf .= 1*params.Q
+        # end
 
-        @show norm(δu), md
+        @show cpeg_iter, norm(δu), md, qp_iters
 
         # update
         U += δu

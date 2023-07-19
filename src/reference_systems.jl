@@ -1,20 +1,22 @@
-struct GravityParameters
-    μ::Float64
-    J2::Float64
-    Rp_e::Float64
-    Rp_p::Float64
-    Rp_m::Float64
-    function GravityParameters()
-        GM_MARS = 4.2828375816e13
-        J2_MARS = 1960.45e-6
-        Rpe_MARS = 3.3962e6 #m equatorial radius
-        Rpp_MARS = 3.3762e6 # polar radius, m
-        Rpm_MARS = 3.3895e6  # volumetric mean radius, m
-        new(GM_MARS,J2_MARS,Rpe_MARS,Rpp_MARS,Rpm_MARS)
-    end
-end
+# NOTE: commented out because this is in gravity.jl
+# struct GravityParameters
+#     μ::Float64
+#     J2::Float64
+#     Rp_e::Float64
+#     Rp_p::Float64
+#     Rp_m::Float64
+#     function GravityParameters()
+#         GM_MARS = 4.2828375816e13
+#         J2_MARS = 1960.45e-6
+#         Rpe_MARS = 3.3962e6 #m equatorial radius
+#         Rpp_MARS = 3.3762e6 # polar radius, m
+#         Rpm_MARS = 3.3895e6  # volumetric mean radius, m
+#         new(GM_MARS,J2_MARS,Rpe_MARS,Rpp_MARS,Rpm_MARS)
+#     end
+# end
 
 function altitude(g::GravityParameters, rp::SVector{3, T}) where T
+    # @show rp
     f = (g.Rp_e-g.Rp_p)/g.Rp_e  # flattening
     e = (1-(1-f)^2) # ellepticity (Note: considered as square)
     r = sqrt(rp[1]^2 + rp[2]^2)
@@ -46,6 +48,10 @@ function altitude(g::GravityParameters, rp::SVector{3, T}) where T
     lon = atan(rp[2],rp[1]) # -180<lon<180
     #Calculate altitude
     N = g.Rp_e / (1-e*sin(lat)^2)^0.5 # radius of curvature in the vertical prime
+    # @show r
+    # @show lat
+    # @show e
+    # @show N
     h = r*cos(lat) + (rp[3] + e*N*sin(lat))*sin(lat) - N
     # h = norm(r) - g.Rp_e
     # print("h2 - ", h2, '\n')
